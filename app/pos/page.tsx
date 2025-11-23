@@ -97,27 +97,33 @@ export default function POSPage() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Search medicines
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-
+  // Debounced search to reduce API calls
+  useEffect(() => {
     if (!hasActiveCounters) {
       setSearchResults([]);
       return;
     }
-    
-    if (query.length < 2) {
+
+    if (searchQuery.length < 2) {
       setSearchResults([]);
       return;
     }
 
-    try {
-      const response = await api.searchMedicines(query, 10);
-      setSearchResults(response.data);
-    } catch (error) {
-      console.error('Error searching medicines:', error);
-    }
-  };
+    const timeoutId = setTimeout(async () => {
+      try {
+        const controller = new AbortController();
+        const response = await api.searchMedicines(searchQuery, 10, controller.signal);
+        setSearchResults(response.data);
+      } catch (error: any) {
+        // Only log non-abort errors
+        if (error?.name !== 'AbortError' && error?.message !== 'Request cancelled') {
+          console.error('Error searching medicines:', error);
+        }
+      }
+    }, 300); // 300ms debounce for search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, hasActiveCounters]);
 
   // Add medicine to cart
   const addToCart = (medicine: any, batch: any) => {
@@ -424,7 +430,7 @@ export default function POSPage() {
                         : 'No active counter selected. Please create or select a counter.'
                     }
                     value={searchQuery}
-                    onChange={(e) => handleSearch(e.target.value)}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     disabled={!hasActiveCounters}
                     className="w-full pl-10 pr-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
                     autoComplete="off"

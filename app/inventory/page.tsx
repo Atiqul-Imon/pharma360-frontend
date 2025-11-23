@@ -25,12 +25,15 @@ export default function InventoryPage() {
         search: searchQuery || undefined,
         category: categoryFilter || undefined,
         isActive: true,
-      });
+      }, true); // Use cache
 
       setMedicines(response.data);
       setTotal(response.pagination?.total || 0);
-    } catch (error) {
-      console.error('Error fetching medicines:', error);
+    } catch (error: any) {
+      // Only log non-cancellation errors
+      if (error?.message !== 'Request cancelled') {
+        console.error('Error fetching medicines:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -40,11 +43,31 @@ export default function InventoryPage() {
     fetchMedicines();
   }, [fetchMedicines]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchMedicines();
-  };
+  // Debounce search to reduce API calls
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery || categoryFilter) {
+        setPage(1);
+        // Call fetchMedicines directly to avoid dependency issues
+        api.getMedicines({
+          page: 1,
+          limit,
+          search: searchQuery || undefined,
+          category: categoryFilter || undefined,
+          isActive: true,
+        }, true).then((response) => {
+          setMedicines(response.data);
+          setTotal(response.pagination?.total || 0);
+        }).catch((error: any) => {
+          if (error?.message !== 'Request cancelled') {
+            console.error('Error fetching medicines:', error);
+          }
+        });
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, categoryFilter, limit]);
 
   const categories = [
     'Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 
@@ -138,7 +161,10 @@ export default function InventoryPage() {
             </select>
 
             <button
-              onClick={handleSearch}
+              onClick={() => {
+                setPage(1);
+                fetchMedicines();
+              }}
               className="btn btn-primary flex items-center gap-2"
             >
               <Filter size={20} />

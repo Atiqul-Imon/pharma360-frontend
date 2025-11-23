@@ -33,7 +33,9 @@ export function useSocket() {
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ Socket connected');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Socket connected');
+      }
       setConnected(true);
       
       // Join tenant room
@@ -41,12 +43,16 @@ export function useSocket() {
     });
 
     newSocket.on('disconnect', () => {
-      console.log('❌ Socket disconnected');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('❌ Socket disconnected');
+      }
       setConnected(false);
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Socket connection error:', error);
+      }
     });
 
     setSocket(newSocket);

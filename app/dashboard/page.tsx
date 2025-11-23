@@ -45,19 +45,35 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!socket) return;
 
+    // Only refetch specific data, not everything
     socket.on('sale-created', () => {
-      fetchDashboardData();
+      // Only refetch sales data, not entire dashboard
+      api.getTodaysSales(false).then((salesData) => {
+        setTodaySales(salesData.data);
+      }).catch(console.error);
     });
 
     socket.on('inventory-updated', () => {
-      fetchDashboardData();
+      // Only refetch inventory summary, not entire dashboard
+      api.getInventorySummary(false).then((inventoryData) => {
+        setInventorySummary(inventoryData.data);
+      }).catch(console.error);
+      
+      // Refetch alerts
+      Promise.all([
+        api.getLowStockAlerts(),
+        api.getExpiryAlerts(30),
+      ]).then(([lowStock, expiry]) => {
+        setLowStockAlerts(lowStock.data.slice(0, 5));
+        setExpiryAlerts(expiry.data.slice(0, 5));
+      }).catch(console.error);
     });
 
     return () => {
       socket.off('sale-created');
       socket.off('inventory-updated');
     };
-  }, [fetchDashboardData, socket]);
+  }, [socket]);
 
   if (loading) {
     return (

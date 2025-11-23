@@ -72,7 +72,7 @@ export default function PurchaseListPage() {
         supplierId: supplierFilter || undefined,
         startDate: dateFrom || undefined,
         endDate: dateTo || undefined,
-      });
+      }, true); // Use cache
 
       setPurchases(response.data || []);
       if (response.pagination) {
@@ -85,9 +85,12 @@ export default function PurchaseListPage() {
           totalPages: 1,
         });
       }
-    } catch (err) {
-      console.error('Failed to load purchases', err);
-      setError('Unable to fetch purchase orders at the moment.');
+    } catch (err: any) {
+      // Only log non-cancellation errors
+      if (err?.message !== 'Request cancelled') {
+        console.error('Failed to load purchases', err);
+        setError('Unable to fetch purchase orders at the moment.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -97,6 +100,18 @@ export default function PurchaseListPage() {
   useEffect(() => {
     fetchPurchases();
   }, [fetchPurchases]);
+
+  // Debounce filter changes to reduce API calls
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (search || statusFilter || paymentFilter || supplierFilter || dateFrom || dateTo) {
+        setPage(1);
+        fetchPurchases();
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [search, statusFilter, paymentFilter, supplierFilter, dateFrom, dateTo]);
 
   const handleFilterSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -14,6 +14,18 @@ const nextConfig = {
   // Production optimizations
   compress: true,
   
+  // Experimental features for better performance
+  experimental: {
+    optimizeCss: true,
+  },
+  
+  // Reduce bundle size - remove console.log in production
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn'],
+    } : false,
+  },
+  
   // Image optimization
   images: {
     formats: ['image/avif', 'image/webp'],

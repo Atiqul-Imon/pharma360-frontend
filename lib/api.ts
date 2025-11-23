@@ -1,9 +1,11 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError, CancelTokenSource } from 'axios';
+import { apiCache } from './api-cache';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
 
 class ApiClient {
   private client: AxiosInstance;
+  private pendingRequests: Map<string, CancelTokenSource> = new Map();
 
   constructor() {
     this.client = axios.create({
@@ -11,6 +13,7 @@ class ApiClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      timeout: 30000, // 30 second timeout
     });
 
     // Request interceptor to add auth token
@@ -41,6 +44,35 @@ class ApiClient {
         return Promise.reject(error);
       }
     );
+  }
+
+  /**
+   * Cancel pending request if exists
+   */
+  private cancelRequest(key: string): void {
+    const source = this.pendingRequests.get(key);
+    if (source) {
+      source.cancel('Request cancelled');
+      this.pendingRequests.delete(key);
+    }
+  }
+
+  /**
+   * Create cancel token for request
+   */
+  private createCancelToken(key: string): any {
+    this.cancelRequest(key);
+    const source = axios.CancelToken.source();
+    this.pendingRequests.set(key, source);
+    return source.token;
+  }
+
+  /**
+   * Generate cache key from URL and params
+   */
+  private getCacheKey(url: string, params?: any): string {
+    const paramsStr = params ? JSON.stringify(params) : '';
+    return `${url}${paramsStr}`;
   }
 
   // Token management
@@ -109,9 +141,38 @@ class ApiClient {
   }
 
   // Inventory endpoints
-  async getMedicines(params?: any) {
-    const response = await this.client.get('/inventory/medicines', { params });
-    return response.data;
+  async getMedicines(params?: any, useCache = true) {
+    const cacheKey = this.getCacheKey('/inventory/medicines', params);
+    
+    // Check cache first
+    if (useCache) {
+      const cached = apiCache.get(cacheKey);
+      if (cached) return cached;
+    }
+
+    // Cancel previous request if exists
+    const cancelToken = this.createCancelToken(cacheKey);
+    
+    try {
+      const response = await this.client.get('/inventory/medicines', { 
+        params,
+        cancelToken,
+      });
+      
+      // Cache successful response (shorter TTL for dynamic data)
+      if (useCache) {
+        apiCache.set(cacheKey, response.data, 2 * 60 * 1000); // 2 minutes
+      }
+      
+      this.pendingRequests.delete(cacheKey);
+      return response.data;
+    } catch (error) {
+      this.pendingRequests.delete(cacheKey);
+      if (axios.isCancel(error)) {
+        throw new Error('Request cancelled');
+      }
+      throw error;
+    }
   }
 
   async getMedicineById(id: string) {
@@ -120,6 +181,7 @@ class ApiClient {
   }
 
   async searchMedicines(query: string, limit?: number, signal?: AbortSignal) {
+    // Don't cache search results - they're too dynamic
     const response = await this.client.get('/inventory/medicines/search', {
       params: { q: query, limit },
       signal,
@@ -129,6 +191,10 @@ class ApiClient {
 
   async createMedicine(data: any) {
     const response = await this.client.post('/inventory/medicines', data);
+    
+    // Invalidate inventory caches
+    apiCache.invalidatePattern('/inventory/.*');
+    
     return response.data;
   }
 
@@ -137,9 +203,33 @@ class ApiClient {
     return response.data;
   }
 
-  async getInventorySummary() {
-    const response = await this.client.get('/inventory/summary');
-    return response.data;
+  async getInventorySummary(useCache = true) {
+    const cacheKey = '/inventory/summary';
+    
+    if (useCache) {
+      const cached = apiCache.get(cacheKey);
+      if (cached) return cached;
+    }
+
+    const cancelToken = this.createCancelToken(cacheKey);
+    
+    try {
+      const response = await this.client.get('/inventory/summary', { cancelToken });
+      
+      // Cache for 3 minutes (summary changes less frequently)
+      if (useCache) {
+        apiCache.set(cacheKey, response.data, 3 * 60 * 1000);
+      }
+      
+      this.pendingRequests.delete(cacheKey);
+      return response.data;
+    } catch (error) {
+      this.pendingRequests.delete(cacheKey);
+      if (axios.isCancel(error)) {
+        throw new Error('Request cancelled');
+      }
+      throw error;
+    }
   }
 
   async getExpiryAlerts(days?: number) {
@@ -172,6 +262,11 @@ class ApiClient {
   // Sales endpoints
   async createSale(data: any) {
     const response = await this.client.post('/sales/sales', data);
+    
+    // Invalidate related caches after sale
+    apiCache.invalidate('/sales/sales/today');
+    apiCache.invalidatePattern('/inventory/.*');
+    
     return response.data;
   }
 
@@ -180,9 +275,33 @@ class ApiClient {
     return response.data;
   }
 
-  async getTodaysSales() {
-    const response = await this.client.get('/sales/sales/today');
-    return response.data;
+  async getTodaysSales(useCache = true) {
+    const cacheKey = '/sales/sales/today';
+    
+    if (useCache) {
+      const cached = apiCache.get(cacheKey);
+      if (cached) return cached;
+    }
+
+    const cancelToken = this.createCancelToken(cacheKey);
+    
+    try {
+      const response = await this.client.get('/sales/sales/today', { cancelToken });
+      
+      // Cache for 1 minute (sales data changes frequently)
+      if (useCache) {
+        apiCache.set(cacheKey, response.data, 60 * 1000);
+      }
+      
+      this.pendingRequests.delete(cacheKey);
+      return response.data;
+    } catch (error) {
+      this.pendingRequests.delete(cacheKey);
+      if (axios.isCancel(error)) {
+        throw new Error('Request cancelled');
+      }
+      throw error;
+    }
   }
 
   async getSaleByInvoice(invoiceNumber: string) {
@@ -270,9 +389,35 @@ class ApiClient {
   }
 
   // Purchase endpoints
-  async getPurchases(params?: any) {
-    const response = await this.client.get('/purchases', { params });
-    return response.data;
+  async getPurchases(params?: any, useCache = true) {
+    const cacheKey = this.getCacheKey('/purchases', params);
+    
+    if (useCache) {
+      const cached = apiCache.get(cacheKey);
+      if (cached) return cached;
+    }
+
+    const cancelToken = this.createCancelToken(cacheKey);
+    
+    try {
+      const response = await this.client.get('/purchases', { 
+        params,
+        cancelToken,
+      });
+      
+      if (useCache) {
+        apiCache.set(cacheKey, response.data, 2 * 60 * 1000);
+      }
+      
+      this.pendingRequests.delete(cacheKey);
+      return response.data;
+    } catch (error) {
+      this.pendingRequests.delete(cacheKey);
+      if (axios.isCancel(error)) {
+        throw new Error('Request cancelled');
+      }
+      throw error;
+    }
   }
 
   async getPurchaseById(id: string) {
@@ -282,6 +427,11 @@ class ApiClient {
 
   async createPurchase(data: any) {
     const response = await this.client.post('/purchases', data);
+    
+    // Invalidate related caches
+    apiCache.invalidatePattern('/purchases.*');
+    apiCache.invalidatePattern('/inventory/.*');
+    
     return response.data;
   }
 
