@@ -46,28 +46,18 @@ export default function InventoryPage() {
   // Debounce search to reduce API calls
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (searchQuery || categoryFilter) {
-        setPage(1);
-        // Call fetchMedicines directly to avoid dependency issues
-        api.getMedicines({
-          page: 1,
-          limit,
-          search: searchQuery || undefined,
-          category: categoryFilter || undefined,
-          isActive: true,
-        }, true).then((response) => {
-          setMedicines(response.data);
-          setTotal(response.pagination?.total || 0);
-        }).catch((error: any) => {
-          if (error?.message !== 'Request cancelled') {
-            console.error('Error fetching medicines:', error);
-          }
-        });
-      }
+      setPage(1);
+      fetchMedicines();
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, categoryFilter, limit]);
+  }, [searchQuery, categoryFilter]); // Removed fetchMedicines from deps to avoid infinite loop
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    fetchMedicines();
+  };
 
   const categories = [
     'Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 
