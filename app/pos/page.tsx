@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/context/AuthContext';
 import { Search, Plus, Minus, Trash2, User, CreditCard, Smartphone, Banknote, X, Store } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -19,6 +20,7 @@ interface CartItem {
 }
 
 export default function POSPage() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -39,6 +41,15 @@ export default function POSPage() {
   const [counterModalOpen, setCounterModalOpen] = useState(false);
   const [counterLoading, setCounterLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showCreateCustomerModal, setShowCreateCustomerModal] = useState(false);
+  const [createCustomerLoading, setCreateCustomerLoading] = useState(false);
+  const [newCustomerData, setNewCustomerData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+  });
+  const [createCustomerErrors, setCreateCustomerErrors] = useState<Record<string, string>>({});
 
   const fetchCounters = useCallback(async () => {
     setCounterLoading(true);
@@ -247,12 +258,73 @@ export default function POSPage() {
           selectCustomer(searchResponse.data[0]);
         } else {
           setCustomer(null);
-          alert('Customer not found. Create customer from Customers page first.');
+          // Open create customer modal with pre-filled phone
+          setNewCustomerData({
+            name: '',
+            phone: customerPhone,
+            email: '',
+            address: '',
+          });
+          setCreateCustomerErrors({});
+          setShowCreateCustomerModal(true);
         }
       } catch {
         setCustomer(null);
-        alert('Customer not found. Create customer from Customers page first.');
+        // Open create customer modal with pre-filled phone
+        setNewCustomerData({
+          name: '',
+          phone: customerPhone,
+          email: '',
+          address: '',
+        });
+        setCreateCustomerErrors({});
+        setShowCreateCustomerModal(true);
       }
+    }
+  };
+
+  // Create new customer from POS
+  const createCustomer = async () => {
+    if (!newCustomerData.name.trim() || !newCustomerData.phone.trim()) {
+      setCreateCustomerErrors({
+        general: 'Name and phone number are required',
+      });
+      return;
+    }
+
+    setCreateCustomerLoading(true);
+    setCreateCustomerErrors({});
+
+    try {
+      const response = await api.createCustomer({
+        name: newCustomerData.name.trim(),
+        phone: newCustomerData.phone.trim(),
+        email: newCustomerData.email.trim() || undefined,
+        address: newCustomerData.address.trim() || undefined,
+      });
+
+      // Select the newly created customer
+      const newCustomer = response.data;
+      selectCustomer(newCustomer);
+      
+      // Close modal and reset form
+      setShowCreateCustomerModal(false);
+      setNewCustomerData({
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+      });
+    } catch (error: any) {
+      if (error.response?.data?.error?.details) {
+        setCreateCustomerErrors(error.response.data.error.details);
+      } else {
+        setCreateCustomerErrors({
+          general: error.response?.data?.error?.message || 'Failed to create customer',
+        });
+      }
+    } finally {
+      setCreateCustomerLoading(false);
     }
   };
 
@@ -333,9 +405,16 @@ export default function POSPage() {
 
   // Invoice Modal
   if (showInvoice && lastInvoice) {
+    const pharmacyName = user?.pharmacyName || 'Pharmacy';
+    const saleDate = new Date(lastInvoice.saleDate);
+    // Customer info might be in lastInvoice.customerId (if populated) or we use the customer state
+    const customerInfo = (lastInvoice.customerId && typeof lastInvoice.customerId === 'object') 
+      ? lastInvoice.customerId 
+      : (lastInvoice.customerId ? { _id: lastInvoice.customerId } : null) || customer;
+
     return (
       <DashboardLayout>
-        <div className="p-8 max-w-4xl mx-auto">
+        <div className="p-4 md:p-8 max-w-4xl mx-auto">
           <div className="card">
             <div className="flex items-center justify-between mb-6 pb-6 border-b border-gray-200">
               <div>
@@ -347,76 +426,195 @@ export default function POSPage() {
               </button>
             </div>
 
-            {/* Invoice */}
-            <div className="border border-gray-300 p-8" id="invoice">
-              <div className="text-center mb-6">
-                <h1 className="text-3xl font-bold">Pharma360</h1>
-                <p className="text-gray-600 mt-2">Tax Invoice</p>
+            {/* Professional Invoice */}
+            <div className="bg-white border-2 border-gray-800 p-6 md:p-10" id="invoice">
+              {/* Print Styles */}
+              <style jsx>{`
+                @media print {
+                  body * {
+                    visibility: hidden;
+                  }
+                  #invoice, #invoice * {
+                    visibility: visible;
+                  }
+                  #invoice {
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                    border: none;
+                    padding: 20px;
+                  }
+                  .no-print {
+                    display: none !important;
+                  }
+                }
+              `}</style>
+
+              {/* Header Section */}
+              <div className="border-b-2 border-gray-800 pb-6 mb-6">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  {/* Pharmacy Info */}
+                  <div className="flex-1">
+                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">{pharmacyName}</h1>
+                    <p className="text-lg font-semibold text-gray-700 mb-1">TAX INVOICE</p>
+                    <p className="text-sm text-gray-600">Retail Pharmacy</p>
+                  </div>
+                  
+                  {/* Invoice Details */}
+                  <div className="text-right">
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Invoice No.</p>
+                      <p className="text-2xl font-bold text-gray-900">{lastInvoice.invoiceNumber}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Date & Time</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {format(saleDate, 'dd MMM yyyy')}
+                      </p>
+                      <p className="text-sm font-medium text-gray-700">
+                        {format(saleDate, 'h:mm a')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-6 pb-6 border-b border-gray-200">
+              {/* Customer & Counter Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-300">
+                {/* Customer Info */}
                 <div>
-                  <p className="text-sm text-gray-600">Invoice Number</p>
-                  <p className="font-bold text-lg">{lastInvoice.invoiceNumber}</p>
+                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Bill To</h3>
+                  {customerInfo ? (
+                    <div className="text-sm">
+                      <p className="font-semibold text-gray-900">{customerInfo.name || 'N/A'}</p>
+                      <p className="text-gray-700">{customerInfo.phone || ''}</p>
+                      {customerInfo.email && (
+                        <p className="text-gray-600">{customerInfo.email}</p>
+                      )}
+                      {customerInfo.address && (
+                        <p className="text-gray-600 mt-1">{customerInfo.address}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-600 italic">Walk-in Customer</p>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Date</p>
-                  <p className="font-medium">{format(new Date(lastInvoice.saleDate), 'MMM d, yyyy h:mm a')}</p>
-                </div>
+
+                {/* Counter Info */}
+                {selectedCounter && (
+                  <div>
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Counter</h3>
+                    <p className="text-sm font-semibold text-gray-900">{selectedCounter.name}</p>
+                  </div>
+                )}
               </div>
 
-              {/* Items */}
-              <table className="w-full mb-6">
-                <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="text-left py-2">Item</th>
-                    <th className="text-right py-2">Qty</th>
-                    <th className="text-right py-2">Price</th>
-                    <th className="text-right py-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lastInvoice.items.map((item: any, index: number) => (
-                    <tr key={index} className="border-b border-gray-200">
-                      <td className="py-2">{item.medicineName}</td>
-                      <td className="text-right py-2">{item.quantity}</td>
-                      <td className="text-right py-2">৳ {item.sellingPrice.toFixed(2)}</td>
-                      <td className="text-right py-2">৳ {item.total.toFixed(2)}</td>
+              {/* Items Table */}
+              <div className="mb-6">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100 border-b-2 border-gray-800">
+                      <th className="text-left py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Item Description</th>
+                      <th className="text-center py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Batch</th>
+                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Qty</th>
+                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Unit Price</th>
+                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Amount</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {lastInvoice.items.map((item: any, index: number) => (
+                      <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
+                        <td className="py-3 px-3">
+                          <p className="font-medium text-gray-900">{item.medicineName}</p>
+                          {item.batchNumber && (
+                            <p className="text-xs text-gray-500 mt-0.5">Batch: {item.batchNumber}</p>
+                          )}
+                        </td>
+                        <td className="text-center py-3 px-3 text-sm text-gray-700">
+                          {item.batchNumber || '-'}
+                        </td>
+                        <td className="text-right py-3 px-3 text-sm font-medium text-gray-900">{item.quantity}</td>
+                        <td className="text-right py-3 px-3 text-sm text-gray-700">৳ {item.sellingPrice.toFixed(2)}</td>
+                        <td className="text-right py-3 px-3 text-sm font-semibold text-gray-900">৳ {item.total.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-              {/* Totals */}
-              <div className="flex justify-end">
-                <div className="w-64 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-medium">৳ {lastInvoice.subtotal.toFixed(2)}</span>
+              {/* Totals Section */}
+              <div className="flex justify-end mb-6">
+                <div className="w-full md:w-80 space-y-2">
+                  {lastInvoice.totalDiscount > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">Subtotal:</span>
+                      <span className="font-medium text-gray-900">৳ {lastInvoice.subtotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {lastInvoice.totalDiscount > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">Discount:</span>
+                      <span className="font-medium text-red-600">-৳ {lastInvoice.totalDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {lastInvoice.tax > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">Tax:</span>
+                      <span className="font-medium text-gray-900">৳ {lastInvoice.tax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-bold py-3 border-t-2 border-b-2 border-gray-800">
+                    <span className="uppercase tracking-wide">Total Amount</span>
+                    <span className="text-2xl">৳ {lastInvoice.grandTotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-lg font-bold border-t-2 border-gray-300 pt-2">
-                    <span>Grand Total:</span>
-                    <span>৳ {lastInvoice.grandTotal.toFixed(2)}</span>
+                  <div className="flex justify-between text-sm py-2 bg-gray-50 px-3 rounded">
+                    <span className="text-gray-700 font-medium">Payment Method:</span>
+                    <span className="font-bold text-gray-900 uppercase">
+                      {lastInvoice.paymentMethod === 'mobile_banking' ? 'bKash/Nagad' : 
+                       lastInvoice.paymentMethod === 'credit' ? 'Credit' :
+                       lastInvoice.paymentMethod === 'card' ? 'Card' : 'Cash'}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Payment Method:</span>
-                    <span className="font-medium uppercase">{lastInvoice.paymentMethod}</span>
-                  </div>
-                  {lastInvoice.changeReturned > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Change:</span>
-                      <span className="font-medium">৳ {lastInvoice.changeReturned.toFixed(2)}</span>
+                  {lastInvoice.paymentMethod !== 'credit' && (
+                    <>
+                      <div className="flex justify-between text-sm py-1">
+                        <span className="text-gray-600">Amount Paid:</span>
+                        <span className="font-medium text-gray-900">৳ {lastInvoice.amountPaid.toFixed(2)}</span>
+                      </div>
+                      {lastInvoice.changeReturned > 0 && (
+                        <div className="flex justify-between text-sm py-1 font-semibold">
+                          <span className="text-gray-700">Change Returned:</span>
+                          <span className="text-green-600">৳ {lastInvoice.changeReturned.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {lastInvoice.paymentMethod === 'credit' && (
+                    <div className="flex justify-between text-sm py-1 font-semibold">
+                      <span className="text-gray-700">Due Amount:</span>
+                      <span className="text-red-600">৳ {lastInvoice.grandTotal.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="mt-8 pt-6 border-t border-gray-200 text-center">
-                <p className="text-sm text-gray-600">Thank you for your purchase!</p>
+              {/* Footer */}
+              <div className="border-t-2 border-gray-800 pt-6 mt-6">
+                <div className="text-center space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">Thank you for your business!</p>
+                  <p className="text-xs text-gray-600">Please keep this invoice for your records</p>
+                  {lastInvoice.paymentMethod === 'credit' && (
+                    <p className="text-xs text-red-600 font-medium mt-2">
+                      ⚠️ Credit Sale - Payment pending
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 flex gap-4">
+            {/* Action Buttons */}
+            <div className="mt-6 flex gap-4 no-print">
               <button onClick={() => window.print()} className="btn btn-primary flex-1">
                 Print Invoice
               </button>
@@ -700,6 +898,27 @@ export default function POSPage() {
                           </div>
                         </button>
                       ))}
+                      {/* Add New Customer Option */}
+                      {!customerSearchLoading && customerPhone.length >= 2 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewCustomerData({
+                              name: '',
+                              phone: customerPhone,
+                              email: '',
+                              address: '',
+                            });
+                            setCreateCustomerErrors({});
+                            setShowCreateCustomerModal(true);
+                            setShowCustomerResults(false);
+                          }}
+                          className="w-full p-3 text-left hover:bg-primary-50 border-t-2 border-gray-200 transition-colors flex items-center gap-2 text-primary-600 font-medium"
+                        >
+                          <Plus size={18} />
+                          <span>Add New Customer: {customerPhone}</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -909,6 +1128,130 @@ export default function POSPage() {
                 className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
               >
                 Refresh Counters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Customer Modal */}
+      {showCreateCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Add New Customer</h3>
+                <p className="text-sm text-gray-500">
+                  Create a new customer to continue with checkout
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateCustomerModal(false);
+                  setCreateCustomerErrors({});
+                }}
+                className="text-gray-500 transition hover:text-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {createCustomerErrors.general && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {createCustomerErrors.general}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  value={newCustomerData.name}
+                  onChange={(e) => {
+                    setNewCustomerData({ ...newCustomerData, name: e.target.value });
+                    if (createCustomerErrors.name) {
+                      setCreateCustomerErrors({ ...createCustomerErrors, name: '' });
+                    }
+                  }}
+                  className={`input w-full ${createCustomerErrors.name ? 'border-red-500' : ''}`}
+                  placeholder="Enter customer name"
+                  autoFocus
+                />
+                {createCustomerErrors.name && (
+                  <p className="mt-1 text-sm text-red-600">{createCustomerErrors.name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  value={newCustomerData.phone}
+                  onChange={(e) => {
+                    setNewCustomerData({ ...newCustomerData, phone: e.target.value });
+                    if (createCustomerErrors.phone) {
+                      setCreateCustomerErrors({ ...createCustomerErrors, phone: '' });
+                    }
+                  }}
+                  className={`input w-full ${createCustomerErrors.phone ? 'border-red-500' : ''}`}
+                  placeholder="01712345678"
+                />
+                {createCustomerErrors.phone && (
+                  <p className="mt-1 text-sm text-red-600">{createCustomerErrors.phone}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={newCustomerData.email}
+                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
+                  className="input w-full"
+                  placeholder="customer@email.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Address (optional)
+                </label>
+                <textarea
+                  value={newCustomerData.address}
+                  onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
+                  className="input w-full"
+                  rows={2}
+                  placeholder="Enter address"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={createCustomer}
+                disabled={createCustomerLoading || !newCustomerData.name.trim() || !newCustomerData.phone.trim()}
+                className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createCustomerLoading ? 'Creating...' : 'Create & Continue'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateCustomerModal(false);
+                  setCreateCustomerErrors({});
+                }}
+                className="btn btn-secondary"
+              >
+                Cancel
               </button>
             </div>
           </div>
