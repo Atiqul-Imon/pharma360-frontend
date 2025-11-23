@@ -4,7 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } f
 import type { CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, parseNumberInput } from '@/lib/format';
 import useDebouncedSearch from '@/lib/hooks/useDebouncedSearch';
@@ -582,8 +581,7 @@ export default function CreatePurchasePage() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-8 max-w-5xl mx-auto space-y-6">
         <div>
           <Link href="/purchases" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
             <ArrowLeft size={20} />
@@ -993,6 +991,5 @@ export default function CreatePurchasePage() {
           </div>
         </form>
       </div>
-    </DashboardLayout>
   );
 }

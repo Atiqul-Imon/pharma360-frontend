@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import {
   Plus,
@@ -111,8 +110,7 @@ export default function PurchaseListPage() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-8 space-y-6">
+    <div className="p-8 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Purchase Orders</h1>
@@ -357,7 +355,6 @@ export default function PurchaseListPage() {
           )}
         </div>
       </div>
-    </DashboardLayout>
   );
 }
 

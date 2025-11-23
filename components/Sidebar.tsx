@@ -11,6 +11,7 @@ import {
   Users,
   FileText,
   Settings,
+  Store,
   LogOut,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -31,6 +32,7 @@ const menuItems: Array<{
   { name: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['owner', 'admin'] },
   { name: 'Customers', href: '/customers', icon: Users, roles: ['owner', 'admin', 'staff'] },
   { name: 'Reports', href: '/reports', icon: FileText, roles: ['owner', 'admin'] },
+  { name: 'Counter Management', href: '/counters', icon: Store, roles: ['owner', 'admin'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
 ];
 
@@ -52,7 +54,7 @@ export default function Sidebar() {
           .filter((item) => (user ? item.roles.includes(user.role as UserRole) : false))
           .map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || (item.href === '/counters' && pathname?.startsWith('/counters'));
           
           return (
             <Link

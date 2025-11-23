@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import {
   ArrowLeft,
@@ -179,36 +178,32 @@ export default function PurchaseDetailsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading purchase order...</p>
-          </div>
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading purchase order...</p>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   if (error || !purchase) {
     return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="card border border-red-200 bg-red-50 text-red-700">
-            <div className="flex items-center gap-3">
-              <XCircle size={24} />
-              <div>
-                <h2 className="text-lg font-semibold">Purchase not available</h2>
-                <p className="text-sm">{error}</p>
-                <Link href="/purchases" className="btn btn-secondary mt-4 inline-flex items-center gap-2">
-                  <ArrowLeft size={18} />
-                  Back to purchases
-                </Link>
-              </div>
+      <div className="p-8">
+        <div className="card border border-red-200 bg-red-50 text-red-700">
+          <div className="flex items-center gap-3">
+            <XCircle size={24} />
+            <div>
+              <h2 className="text-lg font-semibold">Purchase not available</h2>
+              <p className="text-sm">{error}</p>
+              <Link href="/purchases" className="btn btn-secondary mt-4 inline-flex items-center gap-2">
+                <ArrowLeft size={18} />
+                Back to purchases
+              </Link>
             </div>
           </div>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
@@ -217,8 +212,7 @@ export default function PurchaseDetailsPage() {
   const canCancel = purchase.status === 'ordered';
 
   return (
-    <DashboardLayout>
-      <div className="p-8 space-y-6">
+    <div className="p-8 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <Link href="/purchases" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
@@ -558,6 +552,7 @@ export default function PurchaseDetailsPage() {
               </form>
             )}
           </div>
+        </div>
 
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Audit Trail</h2>
@@ -588,8 +583,6 @@ export default function PurchaseDetailsPage() {
           </div>
         </div>
       </div>
-      </div>
-    </DashboardLayout>
   );
 }
 
