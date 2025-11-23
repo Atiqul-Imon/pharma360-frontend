@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
@@ -18,11 +18,7 @@ export default function CustomerDetailsPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
-  useEffect(() => {
-    fetchData();
-  }, [customerId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [customerData, purchasesData] = await Promise.all([
@@ -37,7 +33,11 @@ export default function CustomerDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handlePayDue = async () => {
     if (!paymentAmount || Number(paymentAmount) <= 0) {

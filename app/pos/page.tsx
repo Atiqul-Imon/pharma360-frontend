@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
-import { Search, Plus, Minus, Trash2, User, CreditCard, Smartphone, Banknote, X, Check } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, User, CreditCard, Smartphone, Banknote, X, Store } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface CartItem {
@@ -29,7 +29,68 @@ export default function POSPage() {
   const [loading, setLoading] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [counters, setCounters] = useState<any[]>([]);
+  const [selectedCounterId, setSelectedCounterId] = useState<string | null>(null);
+  const [counterModalOpen, setCounterModalOpen] = useState(false);
+  const [counterLoading, setCounterLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchCounters = useCallback(async () => {
+    setCounterLoading(true);
+    try {
+      const response = await api.getCounters();
+      const payload = response?.data ?? response;
+      const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+      setCounters(list);
+
+      const active = list.filter((counter: any) => counter.status === 'active');
+      let defaultCounter = active.find((counter: any) => counter.isDefault);
+      if (!defaultCounter && active.length > 0) {
+        defaultCounter = active[0];
+      }
+
+      if (defaultCounter) {
+        setSelectedCounterId(defaultCounter._id);
+        setErrorMessage(null);
+      } else {
+        setSelectedCounterId(null);
+      }
+    } catch (error) {
+      console.error('Failed to load counters', error);
+    } finally {
+      setCounterLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCounters();
+  }, [fetchCounters]);
+
+  const selectedCounter = counters.find((counter: any) => counter._id === selectedCounterId);
+  const activeCounters = counters.filter((counter: any) => counter.status === 'active');
+  const hasActiveCounters = activeCounters.length > 0;
+
+  const handleCounterSelect = (counterId: string) => {
+    setSelectedCounterId(counterId);
+    setCounterModalOpen(false);
+    setErrorMessage(null);
+  };
+
+  const openCounterModal = () => {
+    setCounterModalOpen(true);
+  };
+
+  const handleRefreshCounters = async () => {
+    await fetchCounters();
+  };
+
+  const formatCounterTimestamp = useCallback((value?: string) => {
+    if (!value) return 'Never used';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Never used';
+    return date.toLocaleString();
+  }, []);
 
   // Auto-focus search input
   useEffect(() => {
@@ -39,6 +100,11 @@ export default function POSPage() {
   // Search medicines
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
+
+    if (!hasActiveCounters) {
+      setSearchResults([]);
+      return;
+    }
     
     if (query.length < 2) {
       setSearchResults([]);
@@ -125,6 +191,13 @@ export default function POSPage() {
       return;
     }
 
+    if (!selectedCounterId) {
+      setErrorMessage('Select an active counter before completing a sale.');
+      setCounterModalOpen(true);
+      return;
+    }
+
+    setErrorMessage(null);
     setLoading(true);
 
     try {
@@ -139,11 +212,13 @@ export default function POSPage() {
         paymentMethod,
         amountPaid: Number(amountPaid) || grandTotal,
         saleType: 'retail',
+        counterId: selectedCounterId,
       };
 
       const response = await api.createSale(saleData);
       setLastInvoice(response.data);
       setShowInvoice(true);
+      setErrorMessage(null);
 
       // Reset form
       setCart([]);
@@ -151,8 +226,14 @@ export default function POSPage() {
       setCustomerPhone('');
       setAmountPaid('');
       setPaymentMethod('cash');
+      await fetchCounters();
     } catch (error: any) {
-      alert(error.response?.data?.error?.message || 'Failed to complete sale');
+      const details = error?.response?.data?.error?.details;
+      const message =
+        (typeof details === 'object' && details !== null && 'items' in details && details.items) ||
+        error?.response?.data?.error?.message ||
+        'Failed to complete sale. Please try again.';
+      setErrorMessage(typeof message === 'string' ? message : 'Failed to complete sale. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -169,6 +250,7 @@ export default function POSPage() {
   const newSale = () => {
     setShowInvoice(false);
     setLastInvoice(null);
+    setErrorMessage(null);
     searchInputRef.current?.focus();
   };
 
@@ -278,7 +360,56 @@ export default function POSPage() {
           {/* Left: Products Search & Selection */}
           <div className="lg:col-span-2 flex flex-col">
             <div className="card flex-1 flex flex-col">
-              <h2 className="text-2xl font-bold mb-4">Point of Sale</h2>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Store size={18} className="text-primary-500" />
+                    <span className="font-medium">
+                      {selectedCounter ? selectedCounter.name : 'No counter selected'}
+                    </span>
+                    {selectedCounter && selectedCounter.status !== 'active' && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="mt-1 text-2xl font-bold text-gray-900">Point of Sale</h2>
+                  <p className="text-sm text-gray-500">
+                    {selectedCounter
+                      ? `Sales will be recorded under counter "${selectedCounter.name}".`
+                      : hasActiveCounters
+                        ? 'Select an active counter before processing a sale.'
+                        : 'No active counters found. Ask an admin to create one in Settings → Counters.'}
+                  </p>
+                </div>
+                <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                  {errorMessage && (
+                    <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      {errorMessage}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openCounterModal}
+                      className="whitespace-nowrap rounded-md border border-primary-200 px-3 py-2 text-sm font-medium text-primary-600 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={counterLoading || !hasActiveCounters}
+                    >
+                      {selectedCounter ? 'Switch Counter' : 'Select Counter'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRefreshCounters}
+                      className="rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {counterLoading && (
+                    <span className="text-xs text-gray-500">Refreshing counters...</span>
+                  )}
+                </div>
+              </div>
 
               {/* Search */}
               <div className="mb-4">
@@ -287,10 +418,15 @@ export default function POSPage() {
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Search medicine by name, generic name, or scan barcode..."
+                    placeholder={
+                      hasActiveCounters
+                        ? 'Search medicine by name, generic name, or scan barcode...'
+                        : 'No active counter selected. Please create or select a counter.'
+                    }
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    disabled={!hasActiveCounters}
+                    className="w-full pl-10 pr-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
                     autoComplete="off"
                   />
                 </div>
@@ -553,7 +689,7 @@ export default function POSPage() {
               {/* Complete Sale Button */}
               <button
                 onClick={completeSale}
-                disabled={loading || cart.length === 0}
+        disabled={loading || cart.length === 0 || !selectedCounterId}
                 className="mt-6 w-full btn btn-primary py-4 text-xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Processing...' : `Complete Sale - ৳ ${grandTotal.toFixed(2)}`}
@@ -562,6 +698,80 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {counterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Select Counter</h3>
+                <p className="text-sm text-gray-500">
+                  Choose the counter you are operating. Only active counters are selectable.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCounterModalOpen(false)}
+                className="text-gray-500 transition hover:text-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {counters.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                No counters available. Ask an administrator to create one from Settings → Counters.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {counters.map((counter) => {
+                  const isActive = counter.status === 'active';
+                  const isSelected = counter._id === selectedCounterId;
+                  return (
+                    <button
+                      key={counter._id}
+                      type="button"
+                      onClick={() => isActive && handleCounterSelect(counter._id)}
+                      disabled={!isActive}
+                      className={`w-full rounded-lg border px-4 py-3 text-left transition ${
+                        isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-400'
+                      } ${!isActive ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-gray-900">{counter.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {counter.isDefault ? 'Default counter · ' : ''}
+                            Status: {isActive ? 'Active' : 'Inactive'}
+                            {counter.lastSessionAt
+                              ? ` · Last session ${formatCounterTimestamp(counter.lastSessionAt)}`
+                              : ''}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <span className="rounded-full bg-primary-500 px-2 py-1 text-xs font-semibold text-white">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={handleRefreshCounters}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+              >
+                Refresh Counters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

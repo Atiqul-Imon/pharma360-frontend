@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/hooks/useSocket';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, Users, ShoppingCart } from 'lucide-react';
+import { TrendingUp, AlertTriangle, Package, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function DashboardPage() {
   const [todaySales, setTodaySales] = useState<any>(null);
@@ -16,7 +17,7 @@ export default function DashboardPage() {
   const { socket, connected } = useSocket();
 
   // Fetch dashboard data
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [salesData, inventoryData, lowStock, expiry] = await Promise.all([
         api.getTodaysSales(),
@@ -34,11 +35,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
 
   // Real-time updates via Socket.IO
   useEffect(() => {
@@ -56,7 +57,7 @@ export default function DashboardPage() {
       socket.off('sale-created');
       socket.off('inventory-updated');
     };
-  }, [socket]);
+  }, [fetchDashboardData, socket]);
 
   if (loading) {
     return (
@@ -73,7 +74,8 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="p-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
@@ -216,7 +218,8 @@ export default function DashboardPage() {
             <a href="/reports" className="btn btn-secondary text-center">View Reports</a>
           </div>
         </div>
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

@@ -13,17 +13,25 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 
-const menuItems = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'POS', href: '/pos', icon: ShoppingCart },
-  { name: 'Inventory', href: '/inventory', icon: Package },
-  { name: 'Purchases', href: '/purchases', icon: ClipboardList },
-  { name: 'Suppliers', href: '/suppliers', icon: Truck },
-  { name: 'Customers', href: '/customers', icon: Users },
-  { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Settings', href: '/settings', icon: Settings },
+type UserRole = 'owner' | 'admin' | 'staff';
+
+const menuItems: Array<{
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  roles: UserRole[];
+}> = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin'] },
+  { name: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'staff'] },
+  { name: 'Inventory', href: '/inventory', icon: Package, roles: ['owner', 'admin'] },
+  { name: 'Purchases', href: '/purchases', icon: ClipboardList, roles: ['owner', 'admin'] },
+  { name: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['owner', 'admin'] },
+  { name: 'Customers', href: '/customers', icon: Users, roles: ['owner', 'admin', 'staff'] },
+  { name: 'Reports', href: '/reports', icon: FileText, roles: ['owner', 'admin'] },
+  { name: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
 ];
 
 export default function Sidebar() {
@@ -40,7 +48,9 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
-        {menuItems.map((item) => {
+        {menuItems
+          .filter((item) => (user ? item.roles.includes(user.role as UserRole) : false))
+          .map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
           

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { ArrowLeft } from 'lucide-react';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function AddSupplierPage() {
   const router = useRouter();
@@ -66,7 +67,8 @@ export default function AddSupplierPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8 max-w-3xl mx-auto">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="mx-auto max-w-3xl p-8">
         <div className="mb-8">
           <Link href="/suppliers" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
             <ArrowLeft size={20} />
@@ -246,7 +248,8 @@ export default function AddSupplierPage() {
             </div>
           </form>
         </div>
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

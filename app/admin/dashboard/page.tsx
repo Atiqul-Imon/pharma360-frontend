@@ -1,22 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { 
-  Building2, 
-  Users, 
-  TrendingUp, 
-  DollarSign, 
+import {
+  Building2,
+  Users,
+  TrendingUp,
+  DollarSign,
   Activity,
   ArrowUpRight,
-  ArrowDownRight,
   Calendar,
-  Eye,
-  MoreHorizontal,
-  Search,
-  Filter,
-  Download
+  Download,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
@@ -71,18 +66,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    // Check if admin is logged in
-    const adminToken = localStorage.getItem('adminToken');
-    if (!adminToken) {
-      router.push('/admin/login');
-      return;
-    }
-
-    fetchDashboardData();
-  }, [router]);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getAdminDashboard();
@@ -93,7 +77,18 @@ export default function AdminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Check if admin is logged in
+    const adminToken = localStorage.getItem('adminToken');
+    if (!adminToken) {
+      router.push('/admin/login');
+      return;
+    }
+
+    fetchDashboardData();
+  }, [fetchDashboardData, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');

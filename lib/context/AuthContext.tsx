@@ -3,11 +3,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '../api';
 
+type UserRole = 'owner' | 'admin' | 'staff';
+
 interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
   tenantId: string;
   pharmacyName: string;
 }
@@ -19,6 +21,7 @@ interface AuthContextType {
   register: (data: any) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  hasRole: (...roles: UserRole[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,6 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     isAuthenticated: !!user,
+    hasRole: (...roles: UserRole[]) => {
+      if (!user) return false;
+      return roles.includes(user.role);
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

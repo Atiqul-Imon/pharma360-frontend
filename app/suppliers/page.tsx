@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
@@ -18,6 +18,7 @@ import {
   Trash2,
   Truck,
 } from 'lucide-react';
+import RoleGuard from '@/components/RoleGuard';
 
 interface Supplier {
   _id: string;
@@ -55,7 +56,7 @@ export default function SuppliersPage() {
 
   const limit = 10;
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -90,12 +91,11 @@ export default function SuppliersPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [limit, page, search, statusFilter]);
 
   useEffect(() => {
     fetchSuppliers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter]);
+  }, [fetchSuppliers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,7 +144,8 @@ export default function SuppliersPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="p-8">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Supplier Management</h1>
@@ -385,7 +386,8 @@ export default function SuppliersPage() {
             </>
           )}
         </div>
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

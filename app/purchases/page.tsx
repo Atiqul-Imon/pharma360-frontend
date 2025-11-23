@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -9,7 +9,6 @@ import {
   Plus,
   Search,
   Filter,
-  ClipboardList,
   RefreshCw,
   Loader2,
   Truck,
@@ -60,7 +59,7 @@ export default function PurchaseListPage() {
 
   const limit = 20;
 
-  const fetchPurchases = async () => {
+  const fetchPurchases = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -94,12 +93,11 @@ export default function PurchaseListPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [dateFrom, dateTo, limit, page, paymentFilter, search, statusFilter, supplierFilter]);
 
   useEffect(() => {
     fetchPurchases();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter, paymentFilter]);
+  }, [fetchPurchases]);
 
   const handleFilterSubmit = (e: React.FormEvent) => {
     e.preventDefault();

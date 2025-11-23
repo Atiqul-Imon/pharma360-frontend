@@ -1,23 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { 
-  Building2, 
-  Search, 
-  Filter, 
+import {
+  Building2,
+  Search,
+  Filter,
   MoreHorizontal,
   Eye,
   UserCheck,
   UserX,
   Mail,
   Phone,
-  MapPin,
   Calendar,
   DollarSign,
-  Users,
-  TrendingUp
 } from 'lucide-react';
 
 interface TenantSummary {
@@ -48,18 +45,7 @@ export default function AdminTenantsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const limit = 20;
 
-  useEffect(() => {
-    // Check if admin is logged in
-    const adminToken = localStorage.getItem('adminToken');
-    if (!adminToken) {
-      router.push('/admin/login');
-      return;
-    }
-
-    fetchTenants();
-  }, [router, page]);
-
-  const fetchTenants = async () => {
+  const fetchTenants = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getAdminTenants({
@@ -75,7 +61,18 @@ export default function AdminTenantsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit, page, searchQuery]);
+
+  useEffect(() => {
+    // Check if admin is logged in
+    const adminToken = localStorage.getItem('adminToken');
+    if (!adminToken) {
+      router.push('/admin/login');
+      return;
+    }
+
+    fetchTenants();
+  }, [fetchTenants, router]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

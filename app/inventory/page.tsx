@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
-import { Search, Plus, Package, AlertTriangle, Filter, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Package, AlertTriangle, Filter } from 'lucide-react';
 import Link from 'next/link';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function InventoryPage() {
   const [medicines, setMedicines] = useState<any[]>([]);
@@ -15,7 +16,7 @@ export default function InventoryPage() {
   const [total, setTotal] = useState(0);
   const limit = 20;
 
-  const fetchMedicines = async () => {
+  const fetchMedicines = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getMedicines({
@@ -33,11 +34,11 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryFilter, limit, page, searchQuery]);
 
   useEffect(() => {
     fetchMedicines();
-  }, [page, categoryFilter]);
+  }, [fetchMedicines]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +53,8 @@ export default function InventoryPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -260,7 +262,8 @@ export default function InventoryPage() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

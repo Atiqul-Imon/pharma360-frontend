@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -19,6 +19,7 @@ import {
   Calendar,
   AlertCircle,
 } from 'lucide-react';
+import RoleGuard from '@/components/RoleGuard';
 
 interface SupplierDetail {
   _id: string;
@@ -69,7 +70,7 @@ export default function SupplierDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchSupplier = async () => {
+  const fetchSupplier = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getSupplierById(supplierId);
@@ -81,9 +82,9 @@ export default function SupplierDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supplierId]);
 
-  const fetchPurchases = async () => {
+  const fetchPurchases = useCallback(async () => {
     try {
       setPurchaseLoading(true);
       const response = await api.getPurchases({ supplierId, limit: 10 });
@@ -93,15 +94,14 @@ export default function SupplierDetailsPage() {
     } finally {
       setPurchaseLoading(false);
     }
-  };
+  }, [supplierId]);
 
   useEffect(() => {
     if (supplierId) {
       fetchSupplier();
       fetchPurchases();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supplierId]);
+  }, [fetchPurchases, fetchSupplier, supplierId]);
 
   const handleToggleStatus = async () => {
     if (!supplier) return;
@@ -117,46 +117,36 @@ export default function SupplierDetailsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading supplier details...</p>
+  return (
+    <DashboardLayout>
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              <p className="text-gray-600">Loading supplier details...</p>
+            </div>
           </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (error || !supplier) {
-    return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="card border border-red-200 bg-red-50 text-red-700">
-            <div className="flex items-center gap-3">
-              <AlertCircle size={24} />
-              <div>
-                <h2 className="text-lg font-semibold">Supplier not available</h2>
-                <p className="text-sm">
-                  {error || 'The supplier you are looking for could not be found.'}
-                </p>
-                <Link href="/suppliers" className="btn btn-secondary mt-4 inline-flex items-center gap-2">
-                  <ArrowLeft size={18} />
-                  Back to Suppliers
-                </Link>
+        ) : error || !supplier ? (
+          <div className="p-8">
+            <div className="card border border-red-200 bg-red-50 text-red-700">
+              <div className="flex items-center gap-3">
+                <AlertCircle size={24} />
+                <div>
+                  <h2 className="text-lg font-semibold">Supplier not available</h2>
+                  <p className="text-sm">
+                    {error || 'The supplier you are looking for could not be found.'}
+                  </p>
+                  <Link href="/suppliers" className="btn btn-secondary mt-4 inline-flex items-center gap-2">
+                    <ArrowLeft size={18} />
+                    Back to Suppliers
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  return (
-    <DashboardLayout>
-      <div className="p-8 space-y-6">
+        ) : (
+          <div className="space-y-6 p-8">
         <div className="flex items-center justify-between">
           <div>
             <Link href="/suppliers" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
@@ -433,7 +423,9 @@ export default function SupplierDetailsPage() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+        )}
+      </RoleGuard>
     </DashboardLayout>
   );
 }

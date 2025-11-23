@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { ArrowLeft, Plus, Package, AlertTriangle, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function MedicineDetailsPage() {
   const params = useParams();
@@ -16,11 +17,7 @@ export default function MedicineDetailsPage() {
   const [batches, setBatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, [medicineId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [medicineData, batchesData] = await Promise.all([
@@ -35,43 +32,37 @@ export default function MedicineDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [medicineId]);
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading medicine details...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (!medicine) {
-    return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="text-center py-12">
-            <Package className="mx-auto text-gray-400 mb-4" size={48} />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Medicine not found</h3>
-            <Link href="/inventory" className="btn btn-primary mt-4">
-              Back to Inventory
-            </Link>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const totalStock = batches.reduce((sum, batch) => sum + batch.quantity, 0);
   const totalValue = batches.reduce((sum, batch) => sum + (batch.quantity * batch.purchasePrice), 0);
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              <p className="text-gray-600">Loading medicine details...</p>
+            </div>
+          </div>
+        ) : !medicine ? (
+          <div className="p-8">
+            <div className="py-12 text-center">
+              <Package className="mb-4 mx-auto text-gray-400" size={48} />
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">Medicine not found</h3>
+              <Link href="/inventory" className="btn btn-primary mt-4">
+                Back to Inventory
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="p-8">
         {/* Header */}
         <div className="mb-8">
           <Link href="/inventory" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
@@ -294,7 +285,9 @@ export default function MedicineDetailsPage() {
             </div>
           )}
         </div>
-      </div>
+          </div>
+        )}
+      </RoleGuard>
     </DashboardLayout>
   );
 }

@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
+import { formatCurrency, formatDate, parseNumberInput } from '@/lib/format';
+import useDebouncedSearch from '@/lib/hooks/useDebouncedSearch';
 import {
   ArrowLeft,
   Plus,
@@ -42,58 +45,342 @@ interface PurchaseItemDraft {
   alertThreshold: string;
 }
 
+interface PurchaseItem extends PurchaseItemDraft {
+  lineTotal: number;
+  formatted: {
+    purchasePrice: string;
+    sellingPrice: string;
+    mrp: string;
+    expiry: string;
+  };
+}
+
+interface PurchaseFormState {
+  supplierId: string;
+  supplierInvoiceNumber: string;
+  orderDate: string;
+  expectedDeliveryDate: string;
+  discount: string;
+  tax: string;
+  amountPaid: string;
+  initialPaymentMethod: string;
+  notes: string;
+  itemDraft: PurchaseItemDraft;
+  items: PurchaseItem[];
+}
+
+type PurchaseFormField =
+  | 'supplierId'
+  | 'supplierInvoiceNumber'
+  | 'orderDate'
+  | 'expectedDeliveryDate'
+  | 'discount'
+  | 'tax'
+  | 'amountPaid'
+  | 'initialPaymentMethod'
+  | 'notes';
+
+type PurchaseItemField = keyof PurchaseItemDraft;
+
+type PurchaseFormAction =
+  | { type: 'SET_FIELD'; field: PurchaseFormField; value: string }
+  | { type: 'SET_ITEM_DRAFT_FIELD'; field: PurchaseItemField; value: string }
+  | { type: 'RESET_ITEM_DRAFT' }
+  | { type: 'ADD_ITEM'; payload: PurchaseItem }
+  | { type: 'REMOVE_ITEM'; index: number };
+
+const LINE_ITEM_ROW_HEIGHT = 64;
+const MAX_VISIBLE_ROWS = 8;
+const OVERSCAN_ROWS = 4;
+const LINE_ITEM_GRID_TEMPLATE =
+  '2.4fr 1.2fr 0.9fr 0.9fr 1.4fr 1.4fr 1.4fr 1.4fr 0.9fr';
+
+const createItemDraft = (): PurchaseItemDraft => ({
+  medicineId: '',
+  medicineName: '',
+  batchNumber: '',
+  quantity: '',
+  freeQuantity: '0',
+  purchasePrice: '',
+  sellingPrice: '',
+  mrp: '',
+  expiryDate: '',
+  alertThreshold: '',
+});
+
+const createInitialState = (supplierId: string): PurchaseFormState => ({
+  supplierId,
+  supplierInvoiceNumber: '',
+  orderDate: new Date().toISOString().slice(0, 10),
+  expectedDeliveryDate: '',
+  discount: '0',
+  tax: '0',
+  amountPaid: '0',
+  initialPaymentMethod: 'cash',
+  notes: '',
+  itemDraft: createItemDraft(),
+  items: [],
+});
+
+const createPurchaseItem = (draft: PurchaseItemDraft): PurchaseItem => {
+  const sanitized: PurchaseItemDraft = {
+    ...draft,
+    batchNumber: draft.batchNumber.trim(),
+    medicineName: draft.medicineName.trim(),
+  };
+
+  const quantity = parseNumberInput(sanitized.quantity);
+  const purchasePrice = parseNumberInput(sanitized.purchasePrice);
+  const sellingPrice = parseNumberInput(sanitized.sellingPrice);
+  const mrp = parseNumberInput(sanitized.mrp);
+
+  return {
+    ...sanitized,
+    lineTotal: quantity * purchasePrice,
+    formatted: {
+      purchasePrice: formatCurrency(purchasePrice),
+      sellingPrice: formatCurrency(sellingPrice),
+      mrp: formatCurrency(mrp),
+      expiry: formatDate(sanitized.expiryDate),
+    },
+  };
+};
+
+const purchaseFormReducer = (
+  state: PurchaseFormState,
+  action: PurchaseFormAction
+): PurchaseFormState => {
+  switch (action.type) {
+    case 'SET_FIELD':
+      return {
+        ...state,
+        [action.field]: action.value,
+      };
+    case 'SET_ITEM_DRAFT_FIELD':
+      return {
+        ...state,
+        itemDraft: {
+          ...state.itemDraft,
+          [action.field]: action.value,
+        },
+      };
+    case 'RESET_ITEM_DRAFT':
+      return {
+        ...state,
+        itemDraft: createItemDraft(),
+      };
+    case 'ADD_ITEM':
+      return {
+        ...state,
+        items: [...state.items, action.payload],
+        itemDraft: createItemDraft(),
+      };
+    case 'REMOVE_ITEM':
+      return {
+        ...state,
+        items: state.items.filter((_, idx) => idx !== action.index),
+      };
+    default:
+      return state;
+  }
+};
+
+const selectTotals = ({
+  items,
+  discount,
+  tax,
+  amountPaid,
+}: {
+  items: PurchaseItem[];
+  discount: string;
+  tax: string;
+  amountPaid: string;
+}) => {
+  const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  const discountValue = Math.max(0, parseNumberInput(discount));
+  const taxValue = Math.max(0, parseNumberInput(tax));
+  const amountPaidValue = Math.max(0, parseNumberInput(amountPaid));
+  const grandTotal = Math.max(0, subtotal - discountValue + taxValue);
+  const dueAmount = Math.max(0, grandTotal - amountPaidValue);
+
+  return {
+    subtotal,
+    discountValue,
+    taxValue,
+    amountPaidValue,
+    grandTotal,
+    dueAmount,
+    formattedSubtotal: formatCurrency(subtotal),
+    formattedGrandTotal: formatCurrency(grandTotal),
+    formattedDueAmount: formatCurrency(dueAmount),
+  };
+};
+
+interface PurchaseItemsListProps {
+  items: PurchaseItem[];
+  onRemove: (index: number) => void;
+}
+
+const PurchaseItemsList = memo(({ items, onRemove }: PurchaseItemsListProps) => {
+  const shouldVirtualize = items.length > MAX_VISIBLE_ROWS;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  useEffect(() => {
+    if (shouldVirtualize) {
+      return;
+    }
+    setScrollTop(0);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [items, shouldVirtualize]);
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  const listViewportHeight = shouldVirtualize
+    ? MAX_VISIBLE_ROWS * LINE_ITEM_ROW_HEIGHT
+    : items.length * LINE_ITEM_ROW_HEIGHT;
+
+  const baseVisibleCount = shouldVirtualize
+    ? Math.ceil(listViewportHeight / LINE_ITEM_ROW_HEIGHT)
+    : items.length;
+
+  const startIndex = shouldVirtualize
+    ? Math.max(0, Math.floor(scrollTop / LINE_ITEM_ROW_HEIGHT) - OVERSCAN_ROWS)
+    : 0;
+
+  const endIndex = shouldVirtualize
+    ? Math.min(items.length, startIndex + baseVisibleCount + OVERSCAN_ROWS * 2)
+    : items.length;
+
+  const visibleItems = items.slice(startIndex, endIndex);
+  const offsetY = shouldVirtualize ? startIndex * LINE_ITEM_ROW_HEIGHT : 0;
+
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+  };
+
+  const renderRow = (item: PurchaseItem, index: number, style?: CSSProperties) => (
+    <div
+      key={`${item.medicineId}-${index}`}
+      className="grid items-center border-b border-gray-100 px-4 text-sm text-gray-600 last:border-b-0"
+      style={{
+        gridTemplateColumns: LINE_ITEM_GRID_TEMPLATE,
+        height: LINE_ITEM_ROW_HEIGHT,
+        ...(style || {}),
+      }}
+    >
+      <div className="font-medium text-gray-900 truncate pr-3">{item.medicineName}</div>
+      <div className="truncate">{item.batchNumber}</div>
+      <div>{item.quantity || '0'}</div>
+      <div>{item.freeQuantity || '0'}</div>
+      <div>{item.formatted.purchasePrice}</div>
+      <div>{item.formatted.mrp}</div>
+      <div>{item.formatted.sellingPrice}</div>
+      <div>{item.formatted.expiry}</div>
+      <div className="text-right">
+        <button
+          type="button"
+          onClick={() => onRemove(index)}
+          className="text-red-600 hover:text-red-700 inline-flex items-center gap-1"
+        >
+          <Trash2 size={16} />
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mt-6 border border-gray-200 rounded-lg overflow-hidden">
+      <div
+        className="hidden md:grid bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-600 px-4 py-3"
+        style={{ gridTemplateColumns: LINE_ITEM_GRID_TEMPLATE }}
+      >
+        <div>Medicine</div>
+        <div>Batch</div>
+        <div>Qty</div>
+        <div>Free</div>
+        <div>Purchase Price</div>
+        <div>MRP</div>
+        <div>Selling Price</div>
+        <div>Expiry</div>
+        <div className="text-right">Actions</div>
+      </div>
+      <div
+        ref={scrollRef}
+        className="relative"
+        style={{
+          maxHeight: shouldVirtualize ? listViewportHeight : undefined,
+          overflowY: shouldVirtualize ? 'auto' : 'visible',
+        }}
+        onScroll={shouldVirtualize ? handleScroll : undefined}
+      >
+        {shouldVirtualize ? (
+          <div style={{ height: items.length * LINE_ITEM_ROW_HEIGHT, position: 'relative' }}>
+            <div style={{ transform: `translateY(${offsetY}px)` }}>
+              {visibleItems.map((item, idx) =>
+                renderRow(item, startIndex + idx, {
+                  height: LINE_ITEM_ROW_HEIGHT,
+                })
+              )}
+            </div>
+          </div>
+        ) : (
+          visibleItems.map((item, idx) =>
+            renderRow(item, idx, {
+              height: LINE_ITEM_ROW_HEIGHT,
+            })
+          )
+        )}
+      </div>
+    </div>
+  );
+});
+PurchaseItemsList.displayName = 'PurchaseItemsList';
+
 export default function CreatePurchasePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supplierPrefill = searchParams?.get('supplierId') || '';
 
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
-  const [supplierId, setSupplierId] = useState(supplierPrefill);
   const [supplierLoading, setSupplierLoading] = useState(false);
 
-  const [items, setItems] = useState<PurchaseItemDraft[]>([]);
-  const [itemDraft, setItemDraft] = useState<PurchaseItemDraft>({
-    medicineId: '',
-    medicineName: '',
-    batchNumber: '',
-    quantity: '',
-    freeQuantity: '0',
-    purchasePrice: '',
-    sellingPrice: '',
-    mrp: '',
-    expiryDate: '',
-    alertThreshold: '',
-  });
-  const [medicineResults, setMedicineResults] = useState<MedicineOption[]>([]);
-  const [searchingMedicine, setSearchingMedicine] = useState(false);
+  const [formState, dispatch] = useReducer(
+    purchaseFormReducer,
+    supplierPrefill,
+    createInitialState
+  );
 
-  const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
-  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
-  const [discount, setDiscount] = useState('0');
-  const [tax, setTax] = useState('0');
-  const [amountPaid, setAmountPaid] = useState('0');
-  const [initialPaymentMethod, setInitialPaymentMethod] = useState('cash');
-  const [notes, setNotes] = useState('');
+  const {
+    supplierId,
+    supplierInvoiceNumber,
+    orderDate,
+    expectedDeliveryDate,
+    discount,
+    tax,
+    amountPaid,
+    initialPaymentMethod,
+    notes,
+    items,
+    itemDraft,
+  } = formState;
 
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const subtotal = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const qty = Number(item.quantity) || 0;
-      const price = Number(item.purchasePrice) || 0;
-      return sum + qty * price;
-    }, 0);
-  }, [items]);
+  const totals = useMemo(
+    () => selectTotals({ items, discount, tax, amountPaid }),
+    [items, discount, tax, amountPaid]
+  );
+  const { amountPaidValue, grandTotal, formattedSubtotal, formattedGrandTotal, formattedDueAmount } =
+    totals;
 
-  const discountValue = Number(discount) || 0;
-  const taxValue = Number(tax) || 0;
-  const grandTotal = Math.max(0, subtotal - discountValue + taxValue);
-  const amountPaidValue = Number(amountPaid) || 0;
-  const dueAmount = Math.max(0, grandTotal - amountPaidValue);
-
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     try {
       setSupplierLoading(true);
       const response = await api.getSuppliers({ limit: 100, isActive: true });
@@ -103,76 +390,106 @@ export default function CreatePurchasePage() {
     } finally {
       setSupplierLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchSuppliers();
-  }, []);
+  }, [fetchSuppliers]);
 
-  const handleMedicineSearch = async (value: string) => {
-    setItemDraft((prev) => ({ ...prev, medicineName: value }));
-    if (value.trim().length < 2) {
-      setMedicineResults([]);
-      return;
-    }
+  const {
+    setQuery: triggerMedicineSearch,
+    results: medicineSearchResults,
+    isSearching: searchingMedicine,
+    clear: clearMedicineResults,
+  } = useDebouncedSearch<MedicineOption[]>({
+    delay: 350,
+    minLength: 2,
+    search: async (value, signal) => {
+      const response = await api.searchMedicines(value, 10, signal);
+      return response.data || [];
+    },
+    onError: (error) => {
+      console.error('Failed to search medicines', error);
+    },
+  });
 
-    try {
-      setSearchingMedicine(true);
-      const response = await api.searchMedicines(value.trim(), 10);
-      setMedicineResults(response.data || []);
-    } catch (err) {
-      console.error('Failed to search medicines', err);
-    } finally {
-      setSearchingMedicine(false);
-    }
-  };
+  const medicineResults = medicineSearchResults || [];
+
+  const setFieldValue = useCallback(
+    (field: PurchaseFormField, value: string) => {
+      dispatch({ type: 'SET_FIELD', field, value });
+    },
+    [dispatch]
+  );
+
+  const setItemDraftField = useCallback(
+    (field: PurchaseItemField, value: string) => {
+      dispatch({ type: 'SET_ITEM_DRAFT_FIELD', field, value });
+    },
+    [dispatch]
+  );
+
+  const handleMedicineInputChange = useCallback(
+    (value: string) => {
+      if (value.trim() !== itemDraft.medicineName.trim()) {
+        setItemDraftField('medicineId', '');
+      }
+      setItemDraftField('medicineName', value);
+      triggerMedicineSearch(value);
+    },
+    [itemDraft.medicineName, setItemDraftField, triggerMedicineSearch]
+  );
 
   const handleSelectMedicine = (medicine: MedicineOption) => {
-    setItemDraft((prev) => ({
-      ...prev,
-      medicineId: medicine._id,
-      medicineName: medicine.name,
-      sellingPrice: medicine.defaultSellingPrice
-        ? String(medicine.defaultSellingPrice)
-        : prev.sellingPrice,
-    }));
-    setMedicineResults([]);
+    setItemDraftField('medicineId', medicine._id);
+    setItemDraftField('medicineName', medicine.name);
+    if (medicine.defaultSellingPrice !== undefined) {
+      setItemDraftField('sellingPrice', String(medicine.defaultSellingPrice));
+    }
+    clearMedicineResults();
   };
 
   const resetItemDraft = () => {
-    setItemDraft({
-      medicineId: '',
-      medicineName: '',
-      batchNumber: '',
-      quantity: '',
-      freeQuantity: '0',
-      purchasePrice: '',
-      sellingPrice: '',
-      mrp: '',
-      expiryDate: '',
-      alertThreshold: '',
-    });
-    setMedicineResults([]);
+    dispatch({ type: 'RESET_ITEM_DRAFT' });
+    clearMedicineResults();
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = useCallback(() => {
     const draftErrors: Record<string, string> = {};
+    const quantityValue = parseNumberInput(itemDraft.quantity);
+    const freeQuantityValue = parseNumberInput(itemDraft.freeQuantity);
+    const purchasePriceValue = parseNumberInput(itemDraft.purchasePrice);
+    const sellingPriceValue = parseNumberInput(itemDraft.sellingPrice);
+    const mrpValue = parseNumberInput(itemDraft.mrp);
+    const alertThresholdValue = parseNumberInput(itemDraft.alertThreshold);
+    const hasAlertThreshold = itemDraft.alertThreshold.trim().length > 0;
+
     if (!itemDraft.medicineId) draftErrors.medicineId = 'Select a medicine';
     if (!itemDraft.batchNumber.trim()) draftErrors.batchNumber = 'Batch number required';
-    if (!itemDraft.quantity || Number(itemDraft.quantity) <= 0) {
+    if (!itemDraft.quantity.trim() || quantityValue <= 0) {
       draftErrors.quantity = 'Quantity must be greater than zero';
     }
-    if (!itemDraft.purchasePrice || Number(itemDraft.purchasePrice) < 0) {
+    if (!itemDraft.purchasePrice.trim() || purchasePriceValue < 0) {
       draftErrors.purchasePrice = 'Purchase price is required';
     }
-    if (!itemDraft.sellingPrice || Number(itemDraft.sellingPrice) < 0) {
+    if (!itemDraft.sellingPrice.trim() || sellingPriceValue < 0) {
       draftErrors.sellingPrice = 'Selling price is required';
     }
-    if (!itemDraft.mrp || Number(itemDraft.mrp) < 0) {
+    if (!itemDraft.mrp.trim() || mrpValue < 0) {
       draftErrors.mrp = 'MRP is required';
     }
     if (!itemDraft.expiryDate) {
       draftErrors.expiryDate = 'Expiry date required';
+    }
+    const expiry = itemDraft.expiryDate ? new Date(itemDraft.expiryDate) : null;
+    if (expiry && Number.isNaN(expiry.getTime())) {
+      draftErrors.expiryDate = 'Invalid expiry date';
+    }
+    if (hasAlertThreshold && alertThresholdValue < 0) {
+      draftErrors.alertThreshold = 'Alert threshold cannot be negative';
+    }
+    if (freeQuantityValue < 0) {
+      draftErrors.freeQuantity = 'Free quantity cannot be negative';
     }
 
     if (Object.keys(draftErrors).length > 0) {
@@ -180,14 +497,23 @@ export default function CreatePurchasePage() {
       return;
     }
 
-    setItems((prev) => [...prev, itemDraft]);
-    resetItemDraft();
-    setErrors({});
-  };
+    const preparedItem = createPurchaseItem({
+      ...itemDraft,
+      freeQuantity: itemDraft.freeQuantity || '0',
+      alertThreshold: hasAlertThreshold ? itemDraft.alertThreshold : '',
+    });
 
-  const handleRemoveItem = (index: number) => {
-    setItems((prev) => prev.filter((_, idx) => idx !== index));
-  };
+    dispatch({ type: 'ADD_ITEM', payload: preparedItem });
+    setErrors({});
+    clearMedicineResults();
+  }, [clearMedicineResults, dispatch, itemDraft]);
+
+  const handleRemoveItem = useCallback(
+    (index: number) => {
+      dispatch({ type: 'REMOVE_ITEM', index });
+    },
+    [dispatch]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,27 +544,36 @@ export default function CreatePurchasePage() {
         notes: notes || undefined,
         items: items.map((item) => ({
           medicineId: item.medicineId,
-          batchNumber: item.batchNumber.trim(),
-          quantity: Number(item.quantity) || 0,
-          freeQuantity: Number(item.freeQuantity) || 0,
-          purchasePrice: Number(item.purchasePrice) || 0,
-          sellingPrice: Number(item.sellingPrice) || 0,
-          mrp: Number(item.mrp) || 0,
+          batchNumber: item.batchNumber,
+          quantity: parseNumberInput(item.quantity),
+          freeQuantity: parseNumberInput(item.freeQuantity),
+          purchasePrice: parseNumberInput(item.purchasePrice),
+          sellingPrice: parseNumberInput(item.sellingPrice),
+          mrp: parseNumberInput(item.mrp),
           expiryDate: item.expiryDate,
-          alertThreshold: item.alertThreshold ? Number(item.alertThreshold) : undefined,
+          alertThreshold: item.alertThreshold ? parseNumberInput(item.alertThreshold) : undefined,
           notes: undefined,
         })),
       });
 
       router.push('/purchases');
-    } catch (error: any) {
-      if (error.response?.data?.error?.details) {
-        setErrors(error.response.data.error.details);
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        (error as any).response?.data?.error?.details
+      ) {
+        setErrors((error as any).response.data.error.details);
       } else {
         setErrors({
           general:
-            error.response?.data?.error?.message ||
-            'Unable to create purchase order. Please review the inputs.',
+            (typeof error === 'object' &&
+            error !== null &&
+            'response' in error &&
+            (error as any).response?.data?.error?.message
+              ? (error as any).response.data.error.message
+              : 'Unable to create purchase order. Please review the inputs.'),
         });
       }
     } finally {
@@ -282,7 +617,8 @@ export default function CreatePurchasePage() {
                   id="supplierId"
                   value={supplierId}
                   onChange={(e) => {
-                    setSupplierId(e.target.value);
+                    const value = e.target.value;
+                    setFieldValue('supplierId', value);
                     if (errors.supplierId) {
                       setErrors((prev) => ({ ...prev, supplierId: '' }));
                     }
@@ -309,7 +645,7 @@ export default function CreatePurchasePage() {
                   id="supplierInvoiceNumber"
                   type="text"
                   value={supplierInvoiceNumber}
-                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                  onChange={(e) => setFieldValue('supplierInvoiceNumber', e.target.value)}
                   className="input"
                   placeholder="Reference number from supplier"
                 />
@@ -325,7 +661,7 @@ export default function CreatePurchasePage() {
                     id="orderDate"
                     type="date"
                     value={orderDate}
-                    onChange={(e) => setOrderDate(e.target.value)}
+                    onChange={(e) => setFieldValue('orderDate', e.target.value)}
                     className="input pl-10"
                     required
                   />
@@ -343,7 +679,7 @@ export default function CreatePurchasePage() {
                   id="expectedDeliveryDate"
                   type="date"
                   value={expectedDeliveryDate}
-                  onChange={(e) => setExpectedDeliveryDate(e.target.value)}
+                  onChange={(e) => setFieldValue('expectedDeliveryDate', e.target.value)}
                   className="input"
                 />
               </div>
@@ -364,7 +700,7 @@ export default function CreatePurchasePage() {
                 <input
                   type="text"
                   value={itemDraft.medicineName}
-                  onChange={(e) => handleMedicineSearch(e.target.value)}
+                  onChange={(e) => handleMedicineInputChange(e.target.value)}
                   placeholder="Search medicine name or barcode"
                   className={`input ${errors.medicineId ? 'border-red-500' : ''}`}
                 />
@@ -397,7 +733,7 @@ export default function CreatePurchasePage() {
                 <input
                   type="text"
                   value={itemDraft.batchNumber}
-                  onChange={(e) => setItemDraft((prev) => ({ ...prev, batchNumber: e.target.value }))}
+                  onChange={(e) => setItemDraftField('batchNumber', e.target.value)}
                   className={`input ${errors.batchNumber ? 'border-red-500' : ''}`}
                 />
                 {errors.batchNumber && <p className="mt-1 text-sm text-red-600">{errors.batchNumber}</p>}
@@ -409,7 +745,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.quantity}
-                  onChange={(e) => setItemDraft((prev) => ({ ...prev, quantity: e.target.value }))}
+                  onChange={(e) => setItemDraftField('quantity', e.target.value)}
                   className={`input ${errors.quantity ? 'border-red-500' : ''}`}
                 />
                 {errors.quantity && <p className="mt-1 text-sm text-red-600">{errors.quantity}</p>}
@@ -421,9 +757,10 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.freeQuantity}
-                  onChange={(e) => setItemDraft((prev) => ({ ...prev, freeQuantity: e.target.value }))}
+                  onChange={(e) => setItemDraftField('freeQuantity', e.target.value)}
                   className="input"
                 />
+                {errors.freeQuantity && <p className="mt-1 text-sm text-red-600">{errors.freeQuantity}</p>}
               </div>
 
               <div>
@@ -432,9 +769,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.purchasePrice}
-                  onChange={(e) =>
-                    setItemDraft((prev) => ({ ...prev, purchasePrice: e.target.value }))
-                  }
+                  onChange={(e) => setItemDraftField('purchasePrice', e.target.value)}
                   className={`input ${errors.purchasePrice ? 'border-red-500' : ''}`}
                 />
                 {errors.purchasePrice && (
@@ -448,9 +783,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.sellingPrice}
-                  onChange={(e) =>
-                    setItemDraft((prev) => ({ ...prev, sellingPrice: e.target.value }))
-                  }
+                  onChange={(e) => setItemDraftField('sellingPrice', e.target.value)}
                   className={`input ${errors.sellingPrice ? 'border-red-500' : ''}`}
                 />
                 {errors.sellingPrice && (
@@ -464,7 +797,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.mrp}
-                  onChange={(e) => setItemDraft((prev) => ({ ...prev, mrp: e.target.value }))}
+                  onChange={(e) => setItemDraftField('mrp', e.target.value)}
                   className={`input ${errors.mrp ? 'border-red-500' : ''}`}
                 />
                 {errors.mrp && <p className="mt-1 text-sm text-red-600">{errors.mrp}</p>}
@@ -475,7 +808,7 @@ export default function CreatePurchasePage() {
                 <input
                   type="date"
                   value={itemDraft.expiryDate}
-                  onChange={(e) => setItemDraft((prev) => ({ ...prev, expiryDate: e.target.value }))}
+                  onChange={(e) => setItemDraftField('expiryDate', e.target.value)}
                   className={`input ${errors.expiryDate ? 'border-red-500' : ''}`}
                 />
                 {errors.expiryDate && (
@@ -491,11 +824,12 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={itemDraft.alertThreshold}
-                  onChange={(e) =>
-                    setItemDraft((prev) => ({ ...prev, alertThreshold: e.target.value }))
-                  }
+                  onChange={(e) => setItemDraftField('alertThreshold', e.target.value)}
                   className="input"
                 />
+                {errors.alertThreshold && (
+                  <p className="mt-1 text-sm text-red-600">{errors.alertThreshold}</p>
+                )}
               </div>
             </div>
 
@@ -518,53 +852,7 @@ export default function CreatePurchasePage() {
             </div>
 
             {items.length > 0 && (
-              <div className="mt-6">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Medicine</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Batch</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Qty</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Free</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Purchase Price</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">MRP</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Selling Price</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Expiry</th>
-                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, index) => (
-                      <tr key={`${item.medicineId}-${index}`} className="border-b border-gray-100">
-                        <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">{item.medicineName}</p>
-                        </td>
-                        <td className="py-3 px-4 text-gray-600">{item.batchNumber}</td>
-                        <td className="py-3 px-4 text-gray-600">{item.quantity}</td>
-                        <td className="py-3 px-4 text-gray-600">{item.freeQuantity}</td>
-                        <td className="py-3 px-4 text-gray-600">৳ {Number(item.purchasePrice).toFixed(2)}</td>
-                        <td className="py-3 px-4 text-gray-600">৳ {Number(item.mrp).toFixed(2)}</td>
-                        <td className="py-3 px-4 text-gray-600">
-                          ৳ {Number(item.sellingPrice).toFixed(2)}
-                        </td>
-                        <td className="py-3 px-4 text-gray-600">
-                          {new Date(item.expiryDate).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(index)}
-                            className="text-red-600 hover:text-red-700 inline-flex items-center gap-1"
-                          >
-                            <Trash2 size={16} />
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PurchaseItemsList items={items} onRemove={handleRemoveItem} />
             )}
           </div>
 
@@ -574,7 +862,7 @@ export default function CreatePurchasePage() {
               <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
                 <p className="text-sm font-medium text-primary-700">Subtotal</p>
                 <p className="text-3xl font-bold text-primary-700 mt-1">
-                  ৳ {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {formattedSubtotal}
                 </p>
                 <p className="text-xs text-primary-600 mt-2">
                   Based on ordered quantity multiplied by purchase price.
@@ -583,7 +871,7 @@ export default function CreatePurchasePage() {
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-sm font-medium text-green-700">Grand Total</p>
                 <p className="text-3xl font-bold text-green-800 mt-1">
-                  ৳ {grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {formattedGrandTotal}
                 </p>
                 <p className="text-xs text-green-700 mt-2">
                   Includes discount and tax adjustments for supplier settlement.
@@ -598,7 +886,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
+                  onChange={(e) => setFieldValue('discount', e.target.value)}
                   className="input"
                 />
               </div>
@@ -608,7 +896,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={tax}
-                  onChange={(e) => setTax(e.target.value)}
+                  onChange={(e) => setFieldValue('tax', e.target.value)}
                   className="input"
                 />
               </div>
@@ -618,7 +906,7 @@ export default function CreatePurchasePage() {
                   type="number"
                   min="0"
                   value={amountPaid}
-                  onChange={(e) => setAmountPaid(e.target.value)}
+                  onChange={(e) => setFieldValue('amountPaid', e.target.value)}
                   className={`input ${amountPaidValue > grandTotal ? 'border-red-500' : ''}`}
                 />
                 {amountPaidValue > grandTotal && (
@@ -631,7 +919,7 @@ export default function CreatePurchasePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
                 <select
                   value={initialPaymentMethod}
-                  onChange={(e) => setInitialPaymentMethod(e.target.value)}
+                  onChange={(e) => setFieldValue('initialPaymentMethod', e.target.value)}
                   className="input"
                   disabled={amountPaidValue <= 0}
                 >
@@ -653,7 +941,7 @@ export default function CreatePurchasePage() {
                 <p className="text-sm text-yellow-800">
                   Outstanding after this order:{' '}
                   <span className="font-semibold text-yellow-900">
-                    ৳ {dueAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {formattedDueAmount}
                   </span>
                 </p>
                 <p className="text-xs text-yellow-700 mt-2">
@@ -664,7 +952,7 @@ export default function CreatePurchasePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Internal Notes</label>
                 <textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => setFieldValue('notes', e.target.value)}
                   rows={3}
                   className="input"
                   placeholder="Delivery instructions, negotiated terms, or follow-up reminders."

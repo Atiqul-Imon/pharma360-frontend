@@ -1,22 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Calendar, TrendingUp, Download, DollarSign, ShoppingCart, Package } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { subDays } from 'date-fns';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function ReportsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [dailyReport, setDailyReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchReport();
-  }, [selectedDate]);
-
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getDailySalesReport(selectedDate);
@@ -26,7 +23,11 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    fetchReport();
+  }, [fetchReport]);
 
   const paymentMethodData = dailyReport ? [
     { name: 'Cash', value: dailyReport.cashSales, color: '#10b981' },
@@ -37,7 +38,8 @@ export default function ReportsPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -208,7 +210,8 @@ export default function ReportsPage() {
             <p className="text-gray-600">No data available for selected date</p>
           </div>
         )}
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

@@ -119,9 +119,10 @@ class ApiClient {
     return response.data;
   }
 
-  async searchMedicines(query: string, limit?: number) {
+  async searchMedicines(query: string, limit?: number, signal?: AbortSignal) {
     const response = await this.client.get('/inventory/medicines/search', {
       params: { q: query, limit },
+      signal,
     });
     return response.data;
   }
@@ -296,6 +297,27 @@ class ApiClient {
 
   async cancelPurchase(id: string, data?: any) {
     const response = await this.client.post(`/purchases/${id}/cancel`, data);
+    return response.data;
+  }
+
+  // Counter endpoints
+  async getCounters(params?: any) {
+    const response = await this.client.get('/counters', { params });
+    return response.data;
+  }
+
+  async createCounter(data: any) {
+    const response = await this.client.post('/counters', data);
+    return response.data;
+  }
+
+  async updateCounter(id: string, data: any) {
+    const response = await this.client.put(`/counters/${id}`, data);
+    return response.data;
+  }
+
+  async deleteCounter(id: string) {
+    const response = await this.client.delete(`/counters/${id}`);
     return response.data;
   }
 

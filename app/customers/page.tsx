@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { Search, Plus, Users, Award, CreditCard, Phone, Mail } from 'lucide-react';
@@ -15,7 +15,7 @@ export default function CustomersPage() {
   const [total, setTotal] = useState(0);
   const limit = 20;
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getCustomers({
@@ -31,11 +31,11 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit, page, searchQuery]);
 
   useEffect(() => {
     fetchCustomers();
-  }, [page]);
+  }, [fetchCustomers]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function AddMedicinePage() {
   const router = useRouter();
@@ -31,7 +32,6 @@ export default function AddMedicinePage() {
   ];
 
   const units = ['Piece', 'Strip', 'Box', 'Bottle', 'Tube', 'Vial', 'Sachet'];
-  const schedules = ['', 'H', 'G', 'X'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -47,11 +47,34 @@ export default function AddMedicinePage() {
     setErrors({});
 
     try {
-      await api.createMedicine({
-        ...formData,
+      // Prepare data and clean up empty strings
+      const submitData: any = {
+        name: formData.name,
+        genericName: formData.genericName,
+        manufacturer: formData.manufacturer,
+        category: formData.category,
+        strength: formData.strength,
+        unit: formData.unit,
         minStockLevel: Number(formData.minStockLevel),
-        maxStockLevel: formData.maxStockLevel ? Number(formData.maxStockLevel) : undefined,
-      });
+      };
+
+      // Only include barcode if it's not empty
+      if (formData.barcode && formData.barcode.trim()) {
+        submitData.barcode = formData.barcode.trim();
+      }
+
+      // Only include optional fields if they have values
+      if (formData.maxStockLevel) {
+        submitData.maxStockLevel = Number(formData.maxStockLevel);
+      }
+      if (formData.shelf && formData.shelf.trim()) {
+        submitData.shelf = formData.shelf.trim();
+      }
+      if (formData.schedule && formData.schedule.trim()) {
+        submitData.schedule = formData.schedule.trim();
+      }
+
+      await api.createMedicine(submitData);
 
       router.push('/inventory');
     } catch (error: any) {
@@ -67,7 +90,8 @@ export default function AddMedicinePage() {
 
   return (
     <DashboardLayout>
-      <div className="p-8 max-w-4xl mx-auto">
+      <RoleGuard allowedRoles={['owner', 'admin']}>
+        <div className="p-8 max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <Link href="/inventory" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
@@ -312,7 +336,8 @@ export default function AddMedicinePage() {
             expiry dates, and quantities to start selling.
           </p>
         </div>
-      </div>
+        </div>
+      </RoleGuard>
     </DashboardLayout>
   );
 }

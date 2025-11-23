@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { api } from '@/lib/api';
 import {
   ArrowLeft,
-  ClipboardList,
   Truck,
   Calendar,
   CheckCircle,
@@ -87,7 +86,7 @@ export default function PurchaseDetailsPage() {
 
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  const loadPurchase = async () => {
+  const loadPurchase = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.getPurchaseById(purchaseId);
@@ -99,13 +98,13 @@ export default function PurchaseDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [purchaseId]);
 
   useEffect(() => {
     if (purchaseId) {
       loadPurchase();
     }
-  }, [purchaseId]);
+  }, [loadPurchase, purchaseId]);
 
   const handleReceivePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -588,6 +587,7 @@ export default function PurchaseDetailsPage() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </DashboardLayout>
   );
