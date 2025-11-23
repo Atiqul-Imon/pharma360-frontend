@@ -266,9 +266,9 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   className="input"
                 >
-                  <option value="basic">Basic ($15-20/month) - Single location, core features</option>
-                  <option value="professional">Professional ($40-50/month) - Analytics, mobile app, multi-user</option>
-                  <option value="enterprise">Enterprise ($100-150/month) - Multi-location, API access</option>
+                  <option value="basic">Basic (৳600/month) - Single location, core features</option>
+                  <option value="premium">Premium (৳1000/month) - Analytics, mobile app, multi-user</option>
+                  <option value="enterprise">Enterprise (৳2000/month) - Multi-location, API access</option>
                 </select>
                 <p className="mt-1 text-sm text-gray-500">You'll get 30 days free trial on any plan</p>
               </div>
