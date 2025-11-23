@@ -59,13 +59,6 @@ export default function Home() {
       color: 'text-red-600',
       bgColor: 'bg-red-50',
     },
-    {
-      icon: Clock,
-      title: '24/7 Support',
-      description: 'Round-the-clock support with dedicated account managers and comprehensive documentation.',
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50',
-    },
   ];
 
   const benefits = [

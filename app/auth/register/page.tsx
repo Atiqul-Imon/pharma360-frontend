@@ -127,7 +127,6 @@ export default function RegisterPage() {
                   value={formData.pharmacyName}
                   onChange={handleChange}
                   className={`input ${errors.pharmacyName ? 'border-red-500' : ''}`}
-                  placeholder="ABC Pharmacy"
                 />
                 {errors.pharmacyName && <p className="mt-1 text-sm text-red-600">{errors.pharmacyName}</p>}
               </div>
@@ -144,7 +143,6 @@ export default function RegisterPage() {
                   value={formData.ownerName}
                   onChange={handleChange}
                   className={`input ${errors.ownerName ? 'border-red-500' : ''}`}
-                  placeholder="John Doe"
                 />
                 {errors.ownerName && <p className="mt-1 text-sm text-red-600">{errors.ownerName}</p>}
               </div>
@@ -178,7 +176,6 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={handleChange}
                   className={`input ${errors.email ? 'border-red-500' : ''}`}
-                  placeholder="owner@pharmacy.com"
                 />
                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
               </div>
@@ -195,7 +192,6 @@ export default function RegisterPage() {
                   value={formData.phone}
                   onChange={handleChange}
                   className={`input ${errors.phone ? 'border-red-500' : ''}`}
-                  placeholder="01712345678"
                 />
                 {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone}</p>}
               </div>
@@ -212,7 +208,6 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   rows={3}
                   className={`input ${errors.address ? 'border-red-500' : ''}`}
-                  placeholder="123 Main Street, Dhaka, Bangladesh"
                 />
                 {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address}</p>}
               </div>
@@ -233,7 +228,6 @@ export default function RegisterPage() {
                   value={formData.password}
                   onChange={handleChange}
                   className={`input ${errors.password ? 'border-red-500' : ''}`}
-                  placeholder="••••••••"
                 />
                 {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
               </div>
@@ -250,7 +244,6 @@ export default function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   className={`input ${errors.confirmPassword ? 'border-red-500' : ''}`}
-                  placeholder="••••••••"
                 />
                 {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
               </div>
