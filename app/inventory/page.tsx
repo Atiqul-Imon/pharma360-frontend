@@ -25,7 +25,7 @@ export default function InventoryPage() {
         search: searchQuery || undefined,
         category: categoryFilter || undefined,
         isActive: true,
-      }, true); // Use cache
+      });
 
       setMedicines(response.data);
       setTotal(response.pagination?.total || 0);

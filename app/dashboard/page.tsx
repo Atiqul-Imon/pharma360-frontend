@@ -49,14 +49,14 @@ export default function DashboardPage() {
     // Only refetch specific data, not everything
     socket.on('sale-created', () => {
       // Only refetch sales data, not entire dashboard
-      api.getTodaysSales(false).then((salesData) => {
+      api.getTodaysSales().then((salesData) => {
         setTodaySales(salesData.data);
       }).catch(console.error);
     });
 
     socket.on('inventory-updated', () => {
       // Only refetch inventory summary, not entire dashboard
-      api.getInventorySummary(false).then((inventoryData) => {
+      api.getInventorySummary().then((inventoryData) => {
         setInventorySummary(inventoryData.data);
       }).catch(console.error);
       

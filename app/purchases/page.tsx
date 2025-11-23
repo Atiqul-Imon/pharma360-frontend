@@ -72,7 +72,7 @@ export default function PurchaseListPage() {
         supplierId: supplierFilter || undefined,
         startDate: dateFrom || undefined,
         endDate: dateTo || undefined,
-      }, true); // Use cache
+      });
 
       setPurchases(response.data || []);
       if (response.pagination) {

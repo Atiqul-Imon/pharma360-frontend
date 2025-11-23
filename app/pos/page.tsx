@@ -24,6 +24,10 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customer, setCustomer] = useState<any>(null);
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([]);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [showCustomerResults, setShowCustomerResults] = useState(false);
+  const customerSearchRef = useRef<HTMLDivElement>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile_banking' | 'credit'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
   const [loading, setLoading] = useState(false);
@@ -172,16 +176,83 @@ export default function POSPage() {
   const grandTotal = subtotal;
   const change = paymentMethod === 'credit' ? 0 : Math.max(0, Number(amountPaid) - grandTotal);
 
-  // Search customer by phone
+  // Debounced customer search
+  useEffect(() => {
+    if (!customerPhone || customerPhone.length < 2) {
+      setCustomerSearchResults([]);
+      setShowCustomerResults(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setCustomerSearchLoading(true);
+        const response = await api.getCustomers({
+          search: customerPhone,
+          limit: 10,
+        });
+        setCustomerSearchResults(response.data || []);
+        setShowCustomerResults(true);
+      } catch (error: any) {
+        if (error?.name !== 'AbortError' && error?.message !== 'Request cancelled') {
+          console.error('Error searching customers:', error);
+        }
+        setCustomerSearchResults([]);
+      } finally {
+        setCustomerSearchLoading(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [customerPhone]);
+
+  // Close customer search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerSearchRef.current && !customerSearchRef.current.contains(event.target as Node)) {
+        setShowCustomerResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Select customer from search results
+  const selectCustomer = (selectedCustomer: any) => {
+    setCustomer(selectedCustomer);
+    setCustomerPhone(selectedCustomer.phone);
+    setShowCustomerResults(false);
+    setCustomerSearchResults([]);
+  };
+
+  // Search customer by phone (fallback for Enter key)
   const searchCustomer = async () => {
     if (!customerPhone) return;
 
     try {
+      // Try exact phone match first
       const response = await api.getCustomerByPhone(customerPhone);
       setCustomer(response.data);
-    } catch (error) {
-      setCustomer(null);
-      alert('Customer not found. Create customer from Customers page first.');
+      setShowCustomerResults(false);
+      setCustomerSearchResults([]);
+    } catch {
+      // If exact match fails, try search
+      try {
+        const searchResponse = await api.getCustomers({
+          search: customerPhone,
+          limit: 1,
+        });
+        if (searchResponse.data && searchResponse.data.length > 0) {
+          selectCustomer(searchResponse.data[0]);
+        } else {
+          setCustomer(null);
+          alert('Customer not found. Create customer from Customers page first.');
+        }
+      } catch {
+        setCustomer(null);
+        alert('Customer not found. Create customer from Customers page first.');
+      }
     }
   };
 
@@ -558,35 +629,100 @@ export default function POSPage() {
               <h3 className="text-xl font-bold mb-4">Checkout</h3>
 
               {/* Customer */}
-              <div className="mb-6">
+              <div className="mb-6" ref={customerSearchRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Customer (Optional)
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="tel"
-                    placeholder="Customer phone"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="flex-1 input"
-                  />
-                  <button
-                    onClick={searchCustomer}
-                    className="btn btn-secondary"
-                  >
-                    <Search size={18} />
-                  </button>
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder="Search by name or phone..."
+                        value={customerPhone}
+                        onChange={(e) => {
+                          setCustomerPhone(e.target.value);
+                          setCustomer(null); // Clear selected customer when typing
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchCustomer();
+                          }
+                        }}
+                        onFocus={() => {
+                          if (customerSearchResults.length > 0) {
+                            setShowCustomerResults(true);
+                          }
+                        }}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <button
+                      onClick={searchCustomer}
+                      className="btn btn-secondary"
+                      type="button"
+                    >
+                      <Search size={18} />
+                    </button>
+                  </div>
+
+                  {/* Customer Search Results Dropdown */}
+                  {showCustomerResults && customerSearchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {customerSearchLoading && (
+                        <div className="p-3 text-center text-gray-500 text-sm">
+                          Searching...
+                        </div>
+                      )}
+                      {!customerSearchLoading && customerSearchResults.map((result) => (
+                        <button
+                          key={result._id}
+                          type="button"
+                          onClick={() => selectCustomer(result)}
+                          className="w-full p-3 text-left hover:bg-primary-50 border-b border-gray-100 last:border-0 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-gray-900">{result.name}</p>
+                              <p className="text-sm text-gray-600">{result.phone}</p>
+                              {result.email && (
+                                <p className="text-xs text-gray-500">{result.email}</p>
+                              )}
+                            </div>
+                            {result.loyaltyPoints > 0 && (
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">Points</p>
+                                <p className="text-sm font-semibold text-primary-600">{result.loyaltyPoints}</p>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                {/* Selected Customer Display */}
                 {customer && (
                   <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium text-green-900">{customer.name}</p>
-                        <p className="text-sm text-green-700">Points: {customer.loyaltyPoints}</p>
+                        <p className="text-sm text-green-700">
+                          {customer.phone}
+                          {customer.loyaltyPoints > 0 && ` · Points: ${customer.loyaltyPoints}`}
+                        </p>
                       </div>
                       <button
-                        onClick={() => { setCustomer(null); setCustomerPhone(''); }}
+                        onClick={() => {
+                          setCustomer(null);
+                          setCustomerPhone('');
+                          setShowCustomerResults(false);
+                        }}
                         className="text-green-600 hover:text-green-700"
+                        type="button"
                       >
                         <X size={18} />
                       </button>
