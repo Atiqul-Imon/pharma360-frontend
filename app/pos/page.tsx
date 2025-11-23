@@ -413,63 +413,89 @@ export default function POSPage() {
       : (lastInvoice.customerId ? { _id: lastInvoice.customerId } : null) || customer;
 
     return (
-      <DashboardLayout>
-        <div className="p-4 md:p-8 max-w-4xl mx-auto">
-          <div className="card">
-            <div className="flex items-center justify-between mb-6 pb-6 border-b border-gray-200">
-              <div>
-                <h2 className="text-2xl font-bold text-green-600">Sale Completed! ✓</h2>
-                <p className="text-gray-600 mt-1">Invoice generated successfully</p>
-              </div>
-              <button onClick={newSale} className="btn btn-primary">
+      <div className="min-h-screen bg-gray-50">
+        {/* Print Styles */}
+        <style jsx global>{`
+          @media print {
+            body {
+              margin: 0;
+              padding: 0;
+              background: white;
+            }
+            .no-print {
+              display: none !important;
+            }
+            .print-only {
+              display: block !important;
+            }
+            #invoice-container {
+              margin: 0;
+              padding: 0;
+              max-width: 100%;
+              box-shadow: none;
+            }
+            #invoice {
+              border: none;
+              padding: 20px;
+              margin: 0;
+            }
+          }
+          @media screen {
+            .print-only {
+              display: none !important;
+            }
+          }
+        `}</style>
+
+        {/* Screen View - with controls */}
+        <div className="no-print fixed top-0 left-0 right-0 bg-white border-b border-gray-200 shadow-sm z-50 p-4">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-green-600">Sale Completed! ✓</h2>
+              <p className="text-sm text-gray-600">Invoice generated successfully</p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => window.print()} 
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium"
+              >
+                Print Invoice
+              </button>
+              <button 
+                onClick={newSale} 
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
                 New Sale
               </button>
             </div>
+          </div>
+        </div>
 
+        {/* Invoice Container */}
+        <div className="pt-20 pb-8 px-4 print:pt-0 print:pb-0 print:px-0">
+          <div id="invoice-container" className="max-w-3xl mx-auto bg-white shadow-lg print:shadow-none print:max-w-full">
             {/* Professional Invoice */}
-            <div className="bg-white border-2 border-gray-800 p-6 md:p-10" id="invoice">
-              {/* Print Styles */}
-              <style jsx>{`
-                @media print {
-                  body * {
-                    visibility: hidden;
-                  }
-                  #invoice, #invoice * {
-                    visibility: visible;
-                  }
-                  #invoice {
-                    position: absolute;
-                    left: 0;
-                    top: 0;
-                    width: 100%;
-                    border: none;
-                    padding: 20px;
-                  }
-                  .no-print {
-                    display: none !important;
-                  }
-                }
-              `}</style>
+            <div id="invoice" className="bg-white p-8 md:p-12 print:p-8">
 
               {/* Header Section */}
-              <div className="border-b-2 border-gray-800 pb-6 mb-6">
+              <div className="border-b-2 border-gray-900 pb-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   {/* Pharmacy Info */}
                   <div className="flex-1">
-                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">{pharmacyName}</h1>
-                    <p className="text-lg font-semibold text-gray-700 mb-1">TAX INVOICE</p>
+                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 tracking-tight">{pharmacyName}</h1>
+                    <p className="text-xl font-bold text-gray-800 mb-1 uppercase tracking-wider">TAX INVOICE</p>
                     <p className="text-sm text-gray-600">Retail Pharmacy</p>
                   </div>
                   
                   {/* Invoice Details */}
                   <div className="text-right">
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Invoice No.</p>
-                      <p className="text-2xl font-bold text-gray-900">{lastInvoice.invoiceNumber}</p>
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-600 uppercase tracking-wider mb-1 font-semibold">Invoice No.</p>
+                      <p className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">{lastInvoice.invoiceNumber}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">Date & Time</p>
-                      <p className="text-sm font-semibold text-gray-900">
+                      <p className="text-xs text-gray-600 uppercase tracking-wider mb-1 font-semibold">Date & Time</p>
+                      <p className="text-base font-bold text-gray-900">
                         {format(saleDate, 'dd MMM yyyy')}
                       </p>
                       <p className="text-sm font-medium text-gray-700">
@@ -514,29 +540,29 @@ export default function POSPage() {
               <div className="mb-6">
                 <table className="w-full border-collapse">
                   <thead>
-                    <tr className="bg-gray-100 border-b-2 border-gray-800">
-                      <th className="text-left py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Item Description</th>
-                      <th className="text-center py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Batch</th>
-                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Qty</th>
-                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Unit Price</th>
-                      <th className="text-right py-3 px-3 text-xs font-bold text-gray-900 uppercase tracking-wide">Amount</th>
+                    <tr className="bg-gray-900 text-white">
+                      <th className="text-left py-3 px-4 text-xs font-bold uppercase tracking-wider">Item Description</th>
+                      <th className="text-center py-3 px-4 text-xs font-bold uppercase tracking-wider">Batch</th>
+                      <th className="text-right py-3 px-4 text-xs font-bold uppercase tracking-wider">Qty</th>
+                      <th className="text-right py-3 px-4 text-xs font-bold uppercase tracking-wider">Unit Price</th>
+                      <th className="text-right py-3 px-4 text-xs font-bold uppercase tracking-wider">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {lastInvoice.items.map((item: any, index: number) => (
-                      <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="py-3 px-3">
-                          <p className="font-medium text-gray-900">{item.medicineName}</p>
+                      <tr key={index} className="border-b border-gray-200 print:border-gray-300">
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-gray-900 text-sm">{item.medicineName}</p>
                           {item.batchNumber && (
                             <p className="text-xs text-gray-500 mt-0.5">Batch: {item.batchNumber}</p>
                           )}
                         </td>
-                        <td className="text-center py-3 px-3 text-sm text-gray-700">
+                        <td className="text-center py-3 px-4 text-sm text-gray-700">
                           {item.batchNumber || '-'}
                         </td>
-                        <td className="text-right py-3 px-3 text-sm font-medium text-gray-900">{item.quantity}</td>
-                        <td className="text-right py-3 px-3 text-sm text-gray-700">৳ {item.sellingPrice.toFixed(2)}</td>
-                        <td className="text-right py-3 px-3 text-sm font-semibold text-gray-900">৳ {item.total.toFixed(2)}</td>
+                        <td className="text-right py-3 px-4 text-sm font-semibold text-gray-900">{item.quantity}</td>
+                        <td className="text-right py-3 px-4 text-sm text-gray-700">৳ {item.sellingPrice.toFixed(2)}</td>
+                        <td className="text-right py-3 px-4 text-sm font-bold text-gray-900">৳ {item.total.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -564,9 +590,9 @@ export default function POSPage() {
                       <span className="font-medium text-gray-900">৳ {lastInvoice.tax.toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-lg font-bold py-3 border-t-2 border-b-2 border-gray-800">
-                    <span className="uppercase tracking-wide">Total Amount</span>
-                    <span className="text-2xl">৳ {lastInvoice.grandTotal.toFixed(2)}</span>
+                  <div className="flex justify-between text-lg font-bold py-4 border-t-2 border-b-2 border-gray-900 bg-gray-50 px-4 -mx-4">
+                    <span className="uppercase tracking-wider text-gray-900">Total Amount</span>
+                    <span className="text-2xl md:text-3xl text-gray-900">৳ {lastInvoice.grandTotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm py-2 bg-gray-50 px-3 rounded">
                     <span className="text-gray-700 font-medium">Payment Method:</span>
@@ -600,31 +626,21 @@ export default function POSPage() {
               </div>
 
               {/* Footer */}
-              <div className="border-t-2 border-gray-800 pt-6 mt-6">
+              <div className="border-t-2 border-gray-900 pt-6 mt-8">
                 <div className="text-center space-y-2">
-                  <p className="text-sm font-semibold text-gray-900">Thank you for your business!</p>
+                  <p className="text-base font-bold text-gray-900">Thank you for your business!</p>
                   <p className="text-xs text-gray-600">Please keep this invoice for your records</p>
                   {lastInvoice.paymentMethod === 'credit' && (
-                    <p className="text-xs text-red-600 font-medium mt-2">
+                    <p className="text-xs text-red-700 font-bold mt-3 bg-red-50 py-2 px-4 rounded border border-red-200">
                       ⚠️ Credit Sale - Payment pending
                     </p>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="mt-6 flex gap-4 no-print">
-              <button onClick={() => window.print()} className="btn btn-primary flex-1">
-                Print Invoice
-              </button>
-              <button onClick={newSale} className="btn btn-secondary flex-1">
-                Close
-              </button>
-            </div>
           </div>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
@@ -828,9 +844,28 @@ export default function POSPage() {
 
               {/* Customer */}
               <div className="mb-6" ref={customerSearchRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Customer (Optional)
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Customer (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewCustomerData({
+                        name: '',
+                        phone: customerPhone || '',
+                        email: '',
+                        address: '',
+                      });
+                      setCreateCustomerErrors({});
+                      setShowCreateCustomerModal(true);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                  >
+                    <Plus size={14} />
+                    <span>Add New Customer</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <div className="flex gap-2">
                     <div className="relative flex-1">
